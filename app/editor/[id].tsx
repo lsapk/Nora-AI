@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,7 +17,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash2, Send, Tag, Pin } from 'lucide-react-native';
+import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash2, Pin, Sparkles } from 'lucide-react-native';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
@@ -35,7 +36,7 @@ type Note = {
   pinned?: boolean | null;
 };
 
-const NOTE_COLORS = ['#0F172A', '#7E102B', '#2C6B5A', '#7A4B00', '#274E68', '#5A2D70', '#FFFFFF'];
+const NOTE_COLORS = ['#0B1020', '#1F2937', '#7E102B', '#2C6B5A', '#7A4B00', '#274E68', '#5A2D70', '#FFFFFF'];
 
 export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -50,8 +51,10 @@ export default function EditorScreen() {
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [contentSelection, setContentSelection] = useState({ start: 0, end: 0 });
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const [noteColor, setNoteColor] = useState(isDark ? '#0F172A' : '#FFFFFF');
+  const [noteColor, setNoteColor] = useState(isDark ? '#0B1020' : '#FFFFFF');
   const [labels, setLabels] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
 
@@ -74,7 +77,7 @@ export default function EditorScreen() {
     setNote(n);
     setTitle(n.title || '');
     setContent(n.content || '');
-    setNoteColor(n.note_color || (isDark ? '#0F172A' : '#FFFFFF'));
+    setNoteColor(n.note_color || (isDark ? '#0B1020' : '#FFFFFF'));
     setLabels(n.labels || []);
     setIsPinned(Boolean(n.pinned));
     setLoading(false);
@@ -83,6 +86,19 @@ export default function EditorScreen() {
   useEffect(() => {
     fetchNote();
   }, [fetchNote]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => setKeyboardHeight(event.endCoordinates.height));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const saveNote = useCallback(async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned) => {
     if (!noteId || !user?.id) return;
@@ -112,24 +128,65 @@ export default function EditorScreen() {
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => saveNote(title, content), 700);
+    const t = setTimeout(() => saveNote(title, content), 500);
     return () => clearTimeout(t);
-  }, [title, content, noteColor, labels, isPinned]);
+  }, [title, content, noteColor, labels, isPinned, note, saveNote]);
 
   const textIsDark = noteColor === '#FFFFFF';
-  const textColor = textIsDark ? '#1F2937' : '#F9FAFB';
+  const textColor = textIsDark ? '#111827' : '#F9FAFB';
+  const subtleTextColor = textIsDark ? '#6B7280' : '#B9C2D0';
 
-  const addChecklist = () => setContent((p) => `${p}${p ? '\n' : ''}- [ ] `);
-  const addH1 = () => setContent((p) => `${p}${p ? '\n' : ''}# `);
-  const addH2 = () => setContent((p) => `${p}${p ? '\n' : ''}## `);
-  const addBold = () => setContent((p) => `${p}**texte**`);
-  const addItalic = () => setContent((p) => `${p}*texte*`);
-  const addUnderline = () => setContent((p) => `${p}<u>texte</u>`);
+  const updateContentWithSelection = (nextText: string, nextSelection?: { start: number; end: number }) => {
+    setContent(nextText);
+    if (nextSelection) {
+      setTimeout(() => setContentSelection(nextSelection), 0);
+    }
+  };
+
+  const applyWrap = (prefix: string, suffix = prefix) => {
+    const start = contentSelection.start;
+    const end = contentSelection.end;
+    const selected = content.slice(start, end);
+
+    if (start !== end) {
+      const next = `${content.slice(0, start)}${prefix}${selected}${suffix}${content.slice(end)}`;
+      updateContentWithSelection(next, { start: start + prefix.length, end: end + prefix.length });
+    } else {
+      const next = `${content.slice(0, start)}${prefix}${suffix}${content.slice(end)}`;
+      const cursor = start + prefix.length;
+      updateContentWithSelection(next, { start: cursor, end: cursor });
+    }
+  };
+
+  const applyLinePrefix = (prefix: string) => {
+    const start = contentSelection.start;
+    const end = contentSelection.end;
+
+    const lineStart = content.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIndex = content.indexOf('\n', end);
+    const lineEnd = lineEndIndex === -1 ? content.length : lineEndIndex;
+    const chunk = content.slice(lineStart, lineEnd);
+    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const prefixed = chunk
+      .split('\n')
+      .map((line) => `${prefix}${line.replace(new RegExp(`^${escapedPrefix}`), '')}`)
+      .join('\n');
+
+    const next = `${content.slice(0, lineStart)}${prefixed}${content.slice(lineEnd)}`;
+    updateContentWithSelection(next, { start, end: start + prefixed.length });
+  };
+
+  const addChecklist = () => applyLinePrefix('- [ ] ');
+  const addH1 = () => applyLinePrefix('# ');
+  const addH2 = () => applyLinePrefix('## ');
+  const addBold = () => applyWrap('**');
+  const addItalic = () => applyWrap('*');
+  const addUnderline = () => applyWrap('<u>', '</u>');
 
   const addImage = async () => {
-    const imgs = await searchUnsplashImages('minimal background');
+    const imgs = await searchUnsplashImages('minimal wallpaper texture');
     if (!imgs.length) return Alert.alert('Image', 'Aucune image trouvée.');
-    setContent((p) => `${p}\n\n![Image](${imgs[0]})`);
+    setContent((p) => `${p}${p ? '\n\n' : ''}![Image](${imgs[0]})`);
     setShowPanel('none');
   };
 
@@ -146,50 +203,62 @@ export default function EditorScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: noteColor }]} edges={['left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={[styles.editorTop, { paddingTop: insets.top + 6 }]}> 
-          <TouchableOpacity style={styles.roundBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.glassBtn} onPress={() => router.back()}>
             <ArrowLeft size={20} color={textColor} />
           </TouchableOpacity>
+
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.roundBtn} onPress={() => setIsPinned((p) => !p)}><Pin size={18} color={textColor} /></TouchableOpacity>
-            <TouchableOpacity style={styles.roundBtn} onPress={() => setShowPanel('color')}><Palette size={18} color={textColor} /></TouchableOpacity>
+            <TouchableOpacity style={styles.glassBtn} onPress={() => setIsAIChatVisible(true)}>
+              <Sparkles size={18} color={textColor} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.glassBtn} onPress={() => setIsPinned((p) => !p)}>
+              <Pin size={18} color={textColor} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 120 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom + 120, keyboardHeight + 90) }}>
           <TextInput
             value={title}
             onChangeText={setTitle}
             placeholder="Titre"
-            placeholderTextColor={textIsDark ? '#6B7280' : '#C6CEDB'}
+            placeholderTextColor={subtleTextColor}
             style={[styles.title, { color: textColor }]}
           />
+
           {!!labels.length && <Text style={[styles.labels, { color: textColor }]}>#{labels.join(' #')}</Text>}
+
           {!!note?.images_urls?.length && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
               {note.images_urls.map((url, i) => <Image key={`${url}-${i}`} source={{ uri: url }} style={styles.noteImage} />)}
             </ScrollView>
           )}
-          <TextInput
-            value={content}
-            onChangeText={setContent}
-            placeholder="Commencez à écrire..."
-            placeholderTextColor={textIsDark ? '#6B7280' : '#C6CEDB'}
-            style={[styles.content, { color: textColor }]}
-            multiline
-            textAlignVertical="top"
-          />
+
+          <BlurView intensity={textIsDark ? 20 : 12} tint={textIsDark ? 'light' : 'dark'} style={styles.editorSurface}>
+            <TextInput
+              value={content}
+              onChangeText={setContent}
+              placeholder="Commencez à écrire..."
+              placeholderTextColor={subtleTextColor}
+              style={[styles.content, { color: textColor }]}
+              multiline
+              textAlignVertical="top"
+              selection={contentSelection}
+              onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
+            />
+          </BlurView>
         </ScrollView>
 
-        <View style={[styles.bottomWrap, { paddingBottom: insets.bottom + 8 }]}> 
-          <BlurView intensity={45} tint={textIsDark ? 'light' : 'dark'} style={styles.bottomBar}>
-            <View style={{ flexDirection: 'row' }}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('add')}><PlusSquare size={20} color={textColor} /></TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('color')}><Palette size={20} color={textColor} /></TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('text')}><Type size={20} color={textColor} /></TouchableOpacity>
+        <View style={[styles.bottomWrap, { bottom: Math.max(insets.bottom + 8, keyboardHeight + 8) }]}> 
+          <BlurView intensity={40} tint={textIsDark ? 'light' : 'dark'} style={styles.bottomBar}>
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('add')}><PlusSquare size={19} color={textColor} /></TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('color')}><Palette size={19} color={textColor} /></TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('text')}><Type size={19} color={textColor} /></TouchableOpacity>
             </View>
-            <View style={{ flexDirection: 'row' }}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setContent(note?.content || '')}><Undo2 size={20} color={textColor} /></TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('more')}><MoreVertical size={20} color={textColor} /></TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setContent(note?.content || '')}><Undo2 size={19} color={textColor} /></TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('more')}><MoreVertical size={19} color={textColor} /></TouchableOpacity>
             </View>
           </BlurView>
         </View>
@@ -197,7 +266,7 @@ export default function EditorScreen() {
         {showPanel !== 'none' && (
           <View style={styles.panelOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowPanel('none')} />
-            <BlurView intensity={35} tint="dark" style={[styles.panel, { paddingBottom: insets.bottom + 18 }]}> 
+            <BlurView intensity={42} tint="dark" style={[styles.panel, { paddingBottom: insets.bottom + 18 }]}> 
               {showPanel === 'add' && (
                 <>
                   <PanelItem label="Ajouter une image" onPress={addImage} />
@@ -218,6 +287,7 @@ export default function EditorScreen() {
                 <View style={styles.textRow}>
                   <PanelMini label="H1" onPress={addH1} />
                   <PanelMini label="H2" onPress={addH2} />
+                  <PanelMini label="Aa" onPress={addChecklist} />
                   <PanelMini label="B" onPress={addBold} />
                   <PanelMini label="I" onPress={addItalic} />
                   <PanelMini label="U" onPress={addUnderline} />
@@ -247,7 +317,7 @@ export default function EditorScreen() {
           try {
             const res = await getAIResponse(content, msg);
             if (!res) {
-              setAiMessages((p) => [...p, { role: 'ai', content: "L'IA n'est pas disponible: vérifie EXPO_PUBLIC_GEMINI_API_KEY et la connexion internet." }]);
+              setAiMessages((p) => [...p, { role: 'ai', content: "L'IA n'est pas disponible: vérifie EXPO_PUBLIC_GEMINI_API_KEY/EXPO_PUBLIC_GOOGLE_API_KEY et la connexion internet." }]);
               return;
             }
             setAiMessages((p) => [...p, { role: 'ai', content: res.explanation }]);
@@ -284,20 +354,47 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   editorTop: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 8 },
-  roundBtn: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)' },
-  title: { fontSize: 38 / 1.2, fontWeight: '500', marginBottom: 10 },
+  glassBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  title: { fontSize: 32, fontWeight: '600', marginBottom: 10, letterSpacing: -0.2 },
   labels: { fontSize: 12, marginBottom: 8, opacity: 0.9 },
-  noteImage: { width: 140, height: 90, borderRadius: 10, marginRight: 8 },
-  content: { minHeight: 380, fontSize: 17, lineHeight: 24 },
-  bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12 },
-  bottomBar: { height: 58, borderRadius: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, overflow: 'hidden' },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  noteImage: { width: 150, height: 95, borderRadius: 12, marginRight: 8 },
+  editorSurface: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  content: { minHeight: 420, fontSize: 16.5, lineHeight: 24 },
+  bottomWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
+  bottomBar: {
+    height: 58,
+    borderRadius: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  iconBtn: { width: 39, height: 39, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   panelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
   panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 12, overflow: 'hidden' },
   panelItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
   panelText: { color: '#F9FAFB', fontSize: 17 },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
   colorDot: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
-  textRow: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
+  textRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: 8 },
   miniBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
 });

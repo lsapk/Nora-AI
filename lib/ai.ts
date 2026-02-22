@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.EXPO_PUBLIC_GOOGLE_API_KEY || '';
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export type AIResponse = {
@@ -16,7 +16,10 @@ export async function getAIResponse(noteContent: string, userMessage: string): P
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: 'Tu es Nora AI, un assistant de rédaction en français. Réponses claires, utiles, actionnables.',
+    });
     const prompt = `
 Tu es un assistant IA spécialisé dans la prise de notes.
 Contenu actuel de la note :
@@ -24,9 +27,7 @@ Contenu actuel de la note :
 ${noteContent}
 """
 
-Instruction de l'utilisateur : "${userMessage}"
-
-Réponds UNIQUEMENT avec un JSON valide:
+Instruction de l'utilisateur : "${userMessage}"\n\nContrainte: garde le ton et la langue de la note si possible.\n\nRéponds UNIQUEMENT avec un JSON valide:
 {
   "explanation": "Ce que tu as fait",
   "newContent": "Le nouveau contenu complet de la note après modification",
