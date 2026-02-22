@@ -13,12 +13,22 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight } from 'lucide-react-native';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
 import NoteCard from '../../components/NoteCard';
+
+type NoteRow = {
+  id: string;
+  title: string;
+  content: string;
+  updated_at: string;
+  note_color?: string;
+  pinned?: boolean;
+  labels?: string[];
+  order_index?: number;
+};
 
 export default function NotesScreen() {
   const { user } = useAuth();
@@ -27,16 +37,23 @@ export default function NotesScreen() {
 
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { data: notes = [], isLoading, refetch } = useQuery({
     queryKey: ['notes', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', user?.id)
-        .order('pinned', { ascending: false })
-        .order('updated_at', { ascending: false });
+      let query = supabase.from('notes').select('*').eq('user_id', user?.id).order('pinned', { ascending: false });
+      const { data, error } = await query.order('order_index', { ascending: true }).order('updated_at', { ascending: false });
+      if (error && /order_index/i.test(error.message || '')) {
+        const fallback = await supabase
+          .from('notes')
+          .select('*')
+          .eq('user_id', user?.id)
+          .order('pinned', { ascending: false })
+          .order('updated_at', { ascending: false });
+        if (fallback.error) throw fallback.error;
+        return fallback.data ?? [];
+      }
       if (error) throw error;
       return data ?? [];
     },
@@ -51,7 +68,7 @@ export default function NotesScreen() {
 
   const filteredNotes = useMemo(
     () =>
-      notes.filter((note: any) => {
+      (notes as NoteRow[]).filter((note) => {
         const q = search.toLowerCase();
         return note.title?.toLowerCase().includes(q) || note.content?.toLowerCase().includes(q);
       }),
@@ -61,11 +78,43 @@ export default function NotesScreen() {
   const createNote = async () => {
     const { data } = await supabase
       .from('notes')
-      .insert({ user_id: user?.id, content: '', note_color: '#FFFFFF', labels: [] } as any)
+      .insert({ user_id: user?.id, content: '', note_color: '#FFFFFF', labels: [], order_index: Date.now() } as any)
       .select()
       .single();
 
     if (data?.id) router.push(`/editor/${data.id}`);
+  };
+
+  const persistOrder = async (ordered: NoteRow[]) => {
+    for (let i = 0; i < ordered.length; i += 1) {
+      const note = ordered[i];
+      const { error } = await supabase.from('notes').update({ order_index: i }).eq('id', note.id).eq('user_id', user?.id);
+      if (error && /order_index/i.test(error.message || '')) {
+        Alert.alert('Ordre des notes', "Ajoute la colonne 'order_index' dans Supabase (schema.sql) pour mémoriser l'ordre.");
+        return;
+      }
+    }
+    refetch();
+  };
+
+  const onDropOnNote = async (targetId: string) => {
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      return;
+    }
+
+    const working = [...filteredNotes];
+    const from = working.findIndex((n) => n.id === draggingId);
+    const to = working.findIndex((n) => n.id === targetId);
+    if (from === -1 || to === -1) {
+      setDraggingId(null);
+      return;
+    }
+
+    const [moved] = working.splice(from, 1);
+    working.splice(to, 0, moved);
+    setDraggingId(null);
+    await persistOrder(working);
   };
 
   const onComingSoon = (label: string) => {
@@ -82,8 +131,19 @@ export default function NotesScreen() {
 
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Nora AI</Text>
-          <Text style={styles.subtitle}>Notes intelligentes, rapides, fluides</Text>
+          <Text style={styles.subtitle}>Appui long pour déplacer une note</Text>
         </View>
+      </View>
+
+      <View style={styles.searchWrap}>
+        <Search size={16} color="#9CA3AF" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher"
+          placeholderTextColor="#9CA3AF"
+          value={search}
+          onChangeText={setSearch}
+        />
       </View>
 
       <BlurView intensity={45} tint="dark" style={styles.searchWrap}>
@@ -110,6 +170,9 @@ export default function NotesScreen() {
               color={item.note_color}
               pinned={item.pinned}
               labels={item.labels}
+              isDragging={draggingId === item.id}
+              onLongPress={() => setDraggingId(item.id)}
+              onPress={() => (draggingId ? onDropOnNote(item.id) : router.push(`/editor/${item.id}`))}
             />
           </View>
         )}
@@ -127,7 +190,7 @@ export default function NotesScreen() {
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.drawerOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
-          <BlurView intensity={55} tint="dark" style={[styles.drawer, { paddingTop: insets.top + 10 }]}> 
+          <View style={[styles.drawer, { paddingTop: insets.top + 10 }]}> 
             <Text style={styles.drawerTitle}>Nora AI</Text>
             <Text style={styles.drawerSubtitle}>{user?.email || 'Connecté'}</Text>
 
@@ -138,7 +201,7 @@ export default function NotesScreen() {
             <DrawerItem icon={<Settings size={19} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
             <DrawerItem icon={<HelpCircle size={19} color="#E5E7EB" />} label="Aide" onPress={() => onComingSoon('Aide')} />
             <DrawerItem icon={<LogOut size={19} color="#E5E7EB" />} label="Se déconnecter" onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }} />
-          </BlurView>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -171,6 +234,7 @@ const styles = StyleSheet.create({
   title: { color: '#F9FAFB', fontSize: 27, fontWeight: '700' },
   subtitle: { color: '#9CA3AF', fontSize: 12.5, marginTop: 2 },
   searchWrap: {
+    backgroundColor: '#131A2A',
     marginHorizontal: 14,
     marginTop: 12,
     height: 48,
@@ -179,7 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     gap: 8,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
@@ -204,6 +267,7 @@ const styles = StyleSheet.create({
   },
   drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)', justifyContent: 'flex-start' },
   drawer: {
+    backgroundColor: '#0C1322',
     width: '84%',
     height: '100%',
     borderTopRightRadius: 26,
@@ -211,7 +275,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-    overflow: 'hidden',
   },
   drawerTitle: { color: '#F3F4F6', fontSize: 30 / 1.2, fontWeight: '700' },
   drawerSubtitle: { color: '#9CA3AF', marginTop: 2, marginBottom: 18 },

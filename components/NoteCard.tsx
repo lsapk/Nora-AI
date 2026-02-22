@@ -11,9 +11,12 @@ interface NoteCardProps {
   color?: string;
   pinned?: boolean;
   labels?: string[];
+  onPress?: () => void;
+  onLongPress?: () => void;
+  isDragging?: boolean;
 }
 
-export default function NoteCard({ id, title, content, updated_at, color, pinned, labels }: NoteCardProps) {
+export default function NoteCard({ id, title, content, updated_at, color, pinned, labels, onPress, onLongPress, isDragging }: NoteCardProps) {
   const router = useRouter();
   const isLight = !color || color === '#FFFFFF' || color === '#F2F2F7';
   const textColor = isLight ? '#111827' : '#F8FAFC';
@@ -21,8 +24,17 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
   return (
     <TouchableOpacity
       activeOpacity={0.86}
-      style={[styles.card, { backgroundColor: color || '#FFFFFF', borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.16)' }]}
-      onPress={() => router.push(`/editor/${id}`)}
+      style={[
+        styles.card,
+        {
+          backgroundColor: color || '#FFFFFF',
+          borderColor: isDragging ? '#2563EB' : isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.16)',
+          transform: [{ scale: isDragging ? 0.98 : 1 }],
+        },
+      ]}
+      onPress={onPress || (() => router.push(`/editor/${id}`))}
+      onLongPress={onLongPress}
+      delayLongPress={220}
     >
       <View style={styles.rowTop}>
         {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text> : <Text style={[styles.emptyTitle, { color: textColor }]}>Note rapide</Text>}
