@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS note_versions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+
+-- Optional metadata columns for Keep-like editor features
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS note_color TEXT DEFAULT '#FFFFFF';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS labels TEXT[] DEFAULT '{}';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE;
+
 -- Set up Row Level Security (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;

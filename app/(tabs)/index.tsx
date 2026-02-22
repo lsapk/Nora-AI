@@ -22,6 +22,8 @@ export default function NotesScreen() {
       const { data, error } = await supabase
         .from('notes')
         .select('*')
+        .eq('user_id', user?.id)
+        .order('pinned', { ascending: false })
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -37,7 +39,7 @@ export default function NotesScreen() {
   const createNote = async () => {
     const { data, error } = await supabase
       .from('notes')
-      .insert({ user_id: user?.id, content: '' })
+      .insert({ user_id: user?.id, content: '', note_color: isDark ? '#0D111B' : '#FFFFFF', labels: [] } as any)
       .select()
       .single();
 
@@ -73,7 +75,9 @@ export default function NotesScreen() {
               title={item.title}
               content={item.content}
               updated_at={item.updated_at}
-              color={index % 4 === 1 ? '#FFF9C4' : index % 4 === 2 ? '#E1F5FE' : index % 4 === 3 ? '#F1F8E9' : undefined}
+              color={item.note_color}
+              pinned={item.pinned}
+              labels={item.labels}
             />
           </View>
         )}
