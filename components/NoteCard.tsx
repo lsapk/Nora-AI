@@ -11,20 +11,40 @@ interface NoteCardProps {
   color?: string;
   pinned?: boolean;
   labels?: string[];
+  onPress?: () => void;
+  onLongPress?: () => void;
+  isDragging?: boolean;
 }
 
-export default function NoteCard({ id, title, content, updated_at, color, pinned, labels }: NoteCardProps) {
+export default function NoteCard({ id, title, content, updated_at, color, pinned, labels, onPress, onLongPress, isDragging }: NoteCardProps) {
   const router = useRouter();
   const isLight = !color || color === '#FFFFFF' || color === '#F2F2F7';
-  const textColor = isLight ? '#1C1C1E' : '#F5F5F7';
+  const textColor = isLight ? '#111827' : '#F8FAFC';
 
   return (
-    <TouchableOpacity style={[styles.card, { backgroundColor: color || '#FFFFFF' }]} onPress={() => router.push(`/editor/${id}`)}>
+    <TouchableOpacity
+      activeOpacity={0.86}
+      style={[
+        styles.card,
+        {
+          backgroundColor: color || '#FFFFFF',
+          borderColor: isDragging ? '#2563EB' : isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.16)',
+          transform: [{ scale: isDragging ? 0.98 : 1 }],
+        },
+      ]}
+      onPress={onPress || (() => router.push(`/editor/${id}`))}
+      onLongPress={onLongPress}
+      delayLongPress={220}
+    >
       <View style={styles.rowTop}>
-        {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text> : null}
+        {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text> : <Text style={[styles.emptyTitle, { color: textColor }]}>Note rapide</Text>}
         {pinned ? <Pin size={14} color={textColor} /> : null}
       </View>
-      <Text style={[styles.content, { color: textColor }]} numberOfLines={5}>{content}</Text>
+
+      <Text style={[styles.content, { color: textColor }]} numberOfLines={5}>
+        {content || 'Aucun contenu'}
+      </Text>
+
       {!!labels?.length && <Text style={[styles.labels, { color: textColor }]}>#{labels.join(' #')}</Text>}
       <Text style={[styles.date, { color: textColor }]}>{new Date(updated_at).toLocaleDateString()}</Text>
     </TouchableOpacity>
@@ -33,16 +53,21 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 14,
     marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.2)',
-    minHeight: 120,
+    borderWidth: 1,
+    minHeight: 132,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 3,
   },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: 30 / 2, fontWeight: '700', marginBottom: 6, flex: 1 },
-  content: { fontSize: 15, lineHeight: 20 },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  title: { fontSize: 15.5, fontWeight: '700', flex: 1, marginRight: 8 },
+  emptyTitle: { fontSize: 14, opacity: 0.6, fontWeight: '600', flex: 1 },
+  content: { fontSize: 14, lineHeight: 20 },
   labels: { marginTop: 8, fontSize: 12, opacity: 0.9 },
-  date: { fontSize: 11, marginTop: 10, opacity: 0.7 },
+  date: { fontSize: 11.5, marginTop: 10, opacity: 0.7 },
 });

@@ -1,12 +1,8 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { StickyNote, Settings } from 'lucide-react-native';
-import { useColorScheme } from 'react-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-
   return (
     <Tabs
       screenOptions={{
@@ -14,9 +10,7 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#8E8E93',
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: isDark ? '#000000' : '#F2F2F7',
-          borderTopWidth: 0,
-          elevation: 0,
+          display: 'none',
         },
       }}>
       <Tabs.Screen
