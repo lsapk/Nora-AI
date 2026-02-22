@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export type AIResponse = {
@@ -16,9 +15,9 @@ export async function getAIResponse(noteContent: string, userMessage: string): P
     return null;
   }
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-  const prompt = `
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `
 Tu es un assistant IA spécialisé dans la prise de notes.
 Contenu actuel de la note :
 """
@@ -35,13 +34,18 @@ Réponds UNIQUEMENT avec un JSON valide:
 }
 `;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
 
-  try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch) {
+      return {
+        explanation: text.slice(0, 200) || 'Réponse IA reçue.',
+        newContent: noteContent,
+        suggestedImages: [],
+      };
+    }
 
     const parsed = JSON.parse(jsonMatch[0]);
     if (typeof parsed?.newContent !== 'string' || typeof parsed?.explanation !== 'string') {
@@ -54,7 +58,7 @@ Réponds UNIQUEMENT avec un JSON valide:
       suggestedImages: Array.isArray(parsed.suggestedImages) ? parsed.suggestedImages : [],
     };
   } catch (e) {
-    console.error('Failed to parse AI response', e);
+    console.error('AI provider error', e);
     return null;
   }
 }

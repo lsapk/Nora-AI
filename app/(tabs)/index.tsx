@@ -1,22 +1,35 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, FlatList, TextInput, ScrollView, RefreshControl, Text, useColorScheme } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  FlatList,
+  Modal,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { Menu, Search, LayoutGrid, ArrowUpDown, Plus, Bell, Archive, Trash2, Settings, HelpCircle } from 'lucide-react-native';
+
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
 import NoteCard from '../../components/NoteCard';
-import { BlurView } from 'expo-blur';
-import { Search, Plus } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
 
 export default function NotesScreen() {
   const { user } = useAuth();
-  const [search, setSearch] = useState('');
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === 'dark';
 
-  const { data: notes, isLoading, refetch } = useQuery({
+  const [search, setSearch] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const { data: notes = [], isLoading, refetch } = useQuery({
     queryKey: ['notes', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -26,49 +39,63 @@ export default function NotesScreen() {
         .order('pinned', { ascending: false })
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!user,
   });
 
-  const filteredNotes = notes?.filter(note =>
-    note.title?.toLowerCase().includes(search.toLowerCase()) ||
-    note.content?.toLowerCase().includes(search.toLowerCase())
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  const filteredNotes = useMemo(
+    () =>
+      notes.filter((note: any) => {
+        const q = search.toLowerCase();
+        return note.title?.toLowerCase().includes(q) || note.content?.toLowerCase().includes(q);
+      }),
+    [notes, search]
   );
 
   const createNote = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('notes')
-      .insert({ user_id: user?.id, content: '', note_color: isDark ? '#0D111B' : '#FFFFFF', labels: [] } as any)
+      .insert({ user_id: user?.id, content: '', note_color: isDark ? '#111827' : '#FFFFFF', labels: [] } as any)
       .select()
       .single();
 
-    if (data) {
-      router.push(`/editor/${data.id}`);
-    }
+    if (data?.id) router.push(`/editor/${data.id}`);
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#F2F2F7' }]}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>Mes Notes</Text>
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: '#111827' }]}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setDrawerOpen(true)}>
+          <Menu size={22} color="#F3F4F6" />
+        </TouchableOpacity>
 
-      <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.searchBarContainer}>
-        <Search size={20} color="#8E8E93" style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: isDark ? '#FFFFFF' : '#000000' }]}
-          placeholder="Rechercher..."
-          placeholderTextColor="#8E8E93"
-          value={search}
-          onChangeText={setSearch}
-        />
-      </BlurView>
+        <BlurView intensity={35} tint="dark" style={styles.searchWrap}>
+          <Search size={18} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher dans Keep"
+            placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
+          />
+          <LayoutGrid size={18} color="#D1D5DB" />
+          <ArrowUpDown size={18} color="#D1D5DB" />
+        </BlurView>
+
+        <View style={styles.avatar}><Text style={styles.avatarText}>P</Text></View>
+      </View>
 
       <FlatList
         data={filteredNotes}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
+        keyExtractor={(item: any) => item.id}
+        renderItem={({ item }: any) => (
           <View style={styles.noteWrapper}>
             <NoteCard
               id={item.id}
@@ -82,90 +109,64 @@ export default function NotesScreen() {
           </View>
         )}
         numColumns={2}
-        contentContainerStyle={styles.listContent}
         columnWrapperStyle={styles.columnWrapper}
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
-        }
-        ListEmptyComponent={
-          !isLoading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Aucune note trouvée</Text>
-            </View>
-          ) : null
-        }
+        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 110 }}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
+        ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>Aucune note</Text> : null}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={createNote}>
-        <Plus size={32} color="#FFFFFF" />
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={createNote}>
+        <Plus size={34} color="#0F172A" />
       </TouchableOpacity>
+
+      <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+        <View style={styles.drawerOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
+          <View style={[styles.drawer, { paddingTop: insets.top + 12 }]}> 
+            <Text style={styles.drawerTitle}>Google Keep</Text>
+            <DrawerItem icon={<Bell size={20} color="#E5E7EB" />} label="Notes" active />
+            <DrawerItem icon={<Bell size={20} color="#E5E7EB" />} label="Rappels" />
+            <DrawerItem icon={<Archive size={20} color="#E5E7EB" />} label="Archives" />
+            <DrawerItem icon={<Trash2 size={20} color="#E5E7EB" />} label="Corbeille" />
+            <DrawerItem icon={<Settings size={20} color="#E5E7EB" />} label="Paramètres" />
+            <DrawerItem icon={<HelpCircle size={20} color="#E5E7EB" />} label="Aide et commentaires" />
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+function DrawerItem({ icon, label, active = false }: { icon: React.ReactNode; label: string; active?: boolean }) {
+  return (
+    <View style={[styles.drawerItem, active && styles.drawerItemActive]}>
+      <View style={{ width: 26 }}>{icon}</View>
+      <Text style={styles.drawerText}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerContainer: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 34,
-    fontWeight: '700',
-    letterSpacing: -1,
-  },
-  searchBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 10,
-    paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 17,
-  },
-  listContent: {
-    padding: 8,
-    paddingBottom: 100,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-  },
-  noteWrapper: {
-    flex: 0.48,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    marginTop: 100,
-  },
-  emptyText: {
-    color: '#8E8E93',
-    fontSize: 17,
-  },
+  container: { flex: 1 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 },
+  iconBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  searchWrap: { flex: 1, height: 52, borderRadius: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, overflow: 'hidden' },
+  searchInput: { flex: 1, color: '#F3F4F6', fontSize: 20 / 1.1 },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#166534', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: 'white', fontWeight: '700' },
+  columnWrapper: { justifyContent: 'space-between' },
+  noteWrapper: { flex: 0.49 },
+  emptyText: { color: '#9CA3AF', textAlign: 'center', marginTop: 80 },
   fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 30,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    position: 'absolute', right: 18, width: 76, height: 76, borderRadius: 22,
+    backgroundColor: '#BFD2FF', justifyContent: 'center', alignItems: 'center',
   },
+  drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)', justifyContent: 'flex-start' },
+  drawer: {
+    width: '82%', height: '100%', backgroundColor: '#070B15', borderTopRightRadius: 24, borderBottomRightRadius: 24, paddingHorizontal: 16,
+  },
+  drawerTitle: { color: '#F3F4F6', fontSize: 38 / 1.8, fontWeight: '700', marginBottom: 16 },
+  drawerItem: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 6 },
+  drawerItemActive: { backgroundColor: '#3B82F6' },
+  drawerText: { color: '#F3F4F6', fontSize: 17 },
 });
