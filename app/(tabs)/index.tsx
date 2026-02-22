@@ -146,6 +146,17 @@ export default function NotesScreen() {
         />
       </View>
 
+      <BlurView intensity={45} tint="dark" style={styles.searchWrap}>
+        <Search size={16} color="#9CA3AF" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher"
+          placeholderTextColor="#9CA3AF"
+          value={search}
+          onChangeText={setSearch}
+        />
+      </BlurView>
+
       <FlatList
         data={filteredNotes}
         keyExtractor={(item: any) => item.id}
