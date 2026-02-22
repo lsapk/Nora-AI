@@ -1,16 +1,19 @@
-import { MMKV } from 'react-native-mmkv';
+const memoryStorage = new Map<string, string>();
 
-export const storage = new MMKV();
-
+/**
+ * Expo Go-safe sync storage adapter.
+ *
+ * We intentionally avoid `react-native-mmkv` here because Expo Go does not load
+ * the Nitro native module required by MMKV.
+ */
 export const mmkvStorage = {
   setItem: (key: string, value: string) => {
-    storage.set(key, value);
+    memoryStorage.set(key, value);
   },
   getItem: (key: string) => {
-    const value = storage.getString(key);
-    return value === undefined ? null : value;
+    return memoryStorage.get(key) ?? null;
   },
   removeItem: (key: string) => {
-    storage.delete(key);
+    memoryStorage.delete(key);
   },
 };
