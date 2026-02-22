@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Platform } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, useColorScheme } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Sparkles, Image as ImageIcon, List, RotateCcw } from 'lucide-react-native';
+import { Sparkles, Image as ImageIcon, List, RotateCcw, Save } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 interface FloatingDockProps {
@@ -9,37 +9,41 @@ interface FloatingDockProps {
   onUndoPress: () => void;
   onImagePress: () => void;
   onListPress: () => void;
+  onSavePress: () => void;
 }
 
-export default function FloatingDock({ onAIPress, onUndoPress, onImagePress, onListPress }: FloatingDockProps) {
+export default function FloatingDock({ onAIPress, onUndoPress, onImagePress, onListPress, onSavePress }: FloatingDockProps) {
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
+
   const handlePress = (callback: () => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     callback();
   };
 
+  const iconColor = isDark ? '#F2F2F7' : '#1C1C1E';
+
   return (
     <View style={styles.container}>
-      <BlurView intensity={90} tint="light" style={styles.dock}>
+      <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={styles.dock}>
         <TouchableOpacity style={styles.iconButton} onPress={() => handlePress(onUndoPress)}>
-          <RotateCcw size={24} color="#3A3A3C" />
+          <RotateCcw size={20} color={iconColor} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.iconButton} onPress={() => handlePress(onImagePress)}>
-          <ImageIcon size={24} color="#3A3A3C" />
+          <ImageIcon size={20} color={iconColor} />
         </TouchableOpacity>
 
-        <View style={styles.centerContainer}>
-          <TouchableOpacity style={styles.aiButton} onPress={() => handlePress(onAIPress)}>
-            <Sparkles size={32} color="#FFFFFF" fill="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={[styles.iconButton, styles.aiButton]} onPress={() => handlePress(onAIPress)}>
+          <Sparkles size={20} color="#FFFFFF" />
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.iconButton} onPress={() => handlePress(onListPress)}>
-          <List size={24} color="#3A3A3C" />
+          <List size={20} color={iconColor} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.iconButton} onPress={() => {}}>
-          {/* Placeholder for more */}
+        <TouchableOpacity style={styles.iconButton} onPress={() => handlePress(onSavePress)}>
+          <Save size={20} color={iconColor} />
         </TouchableOpacity>
       </BlurView>
     </View>
@@ -49,49 +53,33 @@ export default function FloatingDock({ onAIPress, onUndoPress, onImagePress, onL
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 20,
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    height: 70,
+    paddingHorizontal: 10,
+    height: 58,
     width: '100%',
-    maxWidth: 400,
-    borderRadius: 35,
+    maxWidth: 520,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   iconButton: {
-    padding: 10,
-  },
-  centerContainer: {
-    marginTop: -40, // Make it prominent
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   aiButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
     backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
   },
 });
