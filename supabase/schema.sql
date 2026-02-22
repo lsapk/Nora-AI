@@ -50,6 +50,9 @@ USING (EXISTS (SELECT 1 FROM notes WHERE notes.id = note_versions.note_id AND no
 CREATE POLICY "Users can create versions of their own notes" ON note_versions FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM notes WHERE notes.id = note_versions.note_id AND notes.user_id = auth.uid()));
 
+CREATE POLICY "Users can delete versions of their own notes" ON note_versions FOR DELETE
+USING (EXISTS (SELECT 1 FROM notes WHERE notes.id = note_versions.note_id AND notes.user_id = auth.uid()));
+
 -- Trigger for profiles
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
