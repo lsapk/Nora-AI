@@ -18,7 +18,7 @@ export async function getAIResponse(noteContent: string, userMessage: string): P
   try {
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
-      systemInstruction: 'Tu es Nora AI, un assistant de rédaction en français. Réponses claires, utiles, actionnables.',
+      systemInstruction: 'Tu es Nora AI, un assistant de rédaction en français. Tu produis du texte propre et stable en Markdown simple (titres #/##, gras **, italique *, checklist - [ ] et soulignement HTML <u>...</u>).',
     });
     const prompt = `
 Tu es un assistant IA spécialisé dans la prise de notes.
@@ -27,7 +27,8 @@ Contenu actuel de la note :
 ${noteContent}
 """
 
-Instruction de l'utilisateur : "${userMessage}"\n\nContrainte: garde le ton et la langue de la note si possible.\n\nRéponds UNIQUEMENT avec un JSON valide:
+Instruction de l'utilisateur : "${userMessage}"\n\nContrainte: garde le ton et la langue de la note si possible.
+Contrainte de mise en forme: renvoie un Markdown propre et stable, sans caractères Unicode décoratifs. Utilise uniquement #, ##, **gras**, *italique*, - [ ] pour checklist, et <u>...</u> pour souligner.\n\nRéponds UNIQUEMENT avec un JSON valide:
 {
   "explanation": "Ce que tu as fait",
   "newContent": "Le nouveau contenu complet de la note après modification",
