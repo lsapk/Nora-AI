@@ -76,6 +76,8 @@ export default function NotesScreen() {
     [notes, search]
   );
 
+  const hasPinned = useMemo(() => filteredNotes.some((note) => note.pinned), [filteredNotes]);
+
   const createNote = async () => {
     const { data } = await supabase
       .from('notes')
@@ -125,38 +127,24 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.heroHeader}>
+      <View style={styles.topRow}>
         <TouchableOpacity style={styles.menuBtn} onPress={() => setDrawerOpen(true)}>
-          <Menu size={20} color="#E5E7EB" />
+          <Menu size={21} color="#E5E7EB" />
         </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Nora AI</Text>
-          <Text style={styles.subtitle}>Appui long pour déplacer une note</Text>
-        </View>
+        <BlurView intensity={26} tint="dark" style={styles.searchWrap}>
+          <Search size={18} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher vos notes"
+            placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
+          />
+        </BlurView>
       </View>
 
-      <View style={styles.searchWrap}>
-        <Search size={16} color="#9CA3AF" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Rechercher"
-          placeholderTextColor="#9CA3AF"
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
-
-      <BlurView intensity={45} tint="dark" style={styles.searchWrap}>
-        <Search size={16} color="#9CA3AF" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Rechercher"
-          placeholderTextColor="#9CA3AF"
-          value={search}
-          onChangeText={setSearch}
-        />
-      </BlurView>
+      <Text style={styles.sectionTitle}>{hasPinned ? 'Notes épinglées' : 'Toutes les notes'}</Text>
 
       <FlatList
         data={filteredNotes}
@@ -179,13 +167,13 @@ export default function NotesScreen() {
         )}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: insets.bottom + 112 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 112 }}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
         ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>Aucune note pour le moment</Text> : null}
       />
 
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={createNote}>
-        <Plus size={28} color="#FFFFFF" />
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 18 }]} onPress={createNote}>
+        <Plus size={34} color="#132039" />
       </TouchableOpacity>
 
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
@@ -220,50 +208,50 @@ function DrawerItem({ icon, label, active = false, onPress }: { icon: React.Reac
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#090B10' },
-  heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 8 },
+  container: { flex: 1, backgroundColor: '#0C101A' },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 8 },
   menuBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  title: { color: '#F9FAFB', fontSize: 27, fontWeight: '700' },
-  subtitle: { color: '#9CA3AF', fontSize: 12.5, marginTop: 2 },
   searchWrap: {
-    backgroundColor: '#131A2A',
-    marginHorizontal: 14,
-    marginTop: 12,
-    height: 48,
-    borderRadius: 16,
+    flex: 1,
+    marginHorizontal: 2,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    gap: 8,
+    paddingHorizontal: 16,
+    gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(26,32,44,0.78)',
   },
-  searchInput: { flex: 1, color: '#F3F4F6', fontSize: 15.5 },
+  searchInput: { flex: 1, color: '#F3F4F6', fontSize: 17 },
+  sectionTitle: { color: '#E5E7EB', fontSize: 28, fontWeight: '700', marginTop: 14, marginHorizontal: 14, marginBottom: 8 },
   columnWrapper: { justifyContent: 'space-between' },
   noteWrapper: { flex: 0.488 },
   emptyText: { color: '#9CA3AF', textAlign: 'center', marginTop: 70 },
   fab: {
     position: 'absolute',
-    right: 18,
-    width: 62,
-    height: 62,
-    borderRadius: 18,
-    backgroundColor: '#2563EB',
+    right: 16,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: '#AFC8FF',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+    shadowColor: '#9FB7FF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.34,
+    shadowRadius: 14,
     elevation: 8,
   },
   drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)', justifyContent: 'flex-start' },
