@@ -14,6 +14,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
