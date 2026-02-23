@@ -13,7 +13,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight } from 'lucide-react-native';
+import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight, Tag } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 
 import { supabase } from '../../lib/supabase';
@@ -39,6 +39,7 @@ export default function NotesScreen() {
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
   const { data: notes = [], isLoading, refetch } = useQuery({
     queryKey: ['notes', user?.id],
@@ -67,13 +68,27 @@ export default function NotesScreen() {
     }, [refetch])
   );
 
+  const allLabels = useMemo(() => {
+    const set = new Set<string>();
+    (notes as NoteRow[]).forEach((note) => (note.labels || []).forEach((label) => set.add(label.trim())));
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [notes]);
+
+  const notesForLabel = useMemo(
+    () =>
+      selectedLabel
+        ? (notes as NoteRow[]).filter((note) => (note.labels || []).some((label) => label.toLowerCase() === selectedLabel.toLowerCase()))
+        : (notes as NoteRow[]),
+    [notes, selectedLabel]
+  );
+
   const filteredNotes = useMemo(
     () =>
-      (notes as NoteRow[]).filter((note) => {
+      notesForLabel.filter((note) => {
         const q = search.toLowerCase();
         return note.title?.toLowerCase().includes(q) || note.content?.toLowerCase().includes(q);
       }),
-    [notes, search]
+    [notesForLabel, search]
   );
 
   const hasPinned = useMemo(() => filteredNotes.some((note) => note.pinned), [filteredNotes]);
@@ -81,17 +96,16 @@ export default function NotesScreen() {
   const createNote = async () => {
     const { data } = await supabase
       .from('notes')
-      .insert({ user_id: user?.id, content: '', note_color: '#FFFFFF', labels: [], order_index: Date.now() } as any)
+      .insert({ user_id: user?.id, content: '', note_color: '#FFFFFF', labels: selectedLabel ? [selectedLabel] : [], order_index: Date.now() } as any)
       .select()
       .single();
 
     if (data?.id) router.push(`/editor/${data.id}`);
   };
 
-  const persistOrder = async (ordered: NoteRow[]) => {
-    for (let i = 0; i < ordered.length; i += 1) {
-      const note = ordered[i];
-      const { error } = await supabase.from('notes').update({ order_index: i }).eq('id', note.id).eq('user_id', user?.id);
+  const persistOrder = async (orderedIds: string[]) => {
+    for (let i = 0; i < orderedIds.length; i += 1) {
+      const { error } = await supabase.from('notes').update({ order_index: i }).eq('id', orderedIds[i]).eq('user_id', user?.id);
       if (error && /order_index/i.test(error.message || '')) {
         Alert.alert('Ordre des notes', "Ajoute la colonne 'order_index' dans Supabase (schema.sql) pour mémoriser l'ordre.");
         return;
@@ -106,23 +120,34 @@ export default function NotesScreen() {
       return;
     }
 
-    const working = [...filteredNotes];
-    const from = working.findIndex((n) => n.id === draggingId);
-    const to = working.findIndex((n) => n.id === targetId);
+    if (search.trim() || selectedLabel) {
+      setDraggingId(null);
+      Alert.alert('Réorganisation', 'Pour déplacer les notes, enlève la recherche et le filtre de libellé.');
+      return;
+    }
+
+    const all = [...(notes as NoteRow[])];
+    const from = all.findIndex((n) => n.id === draggingId);
+    const to = all.findIndex((n) => n.id === targetId);
     if (from === -1 || to === -1) {
       setDraggingId(null);
       return;
     }
 
-    const [moved] = working.splice(from, 1);
-    working.splice(to, 0, moved);
+    const [moved] = all.splice(from, 1);
+    all.splice(to, 0, moved);
     setDraggingId(null);
-    await persistOrder(working);
+    await persistOrder(all.map((n) => n.id));
   };
 
   const onComingSoon = (label: string) => {
     setDrawerOpen(false);
     Alert.alert(label, 'Cette section arrive bientôt.');
+  };
+
+  const addLabelShortcut = () => {
+    setDrawerOpen(false);
+    Alert.alert('Libellés', "Crée un libellé depuis l'éditeur (menu Plus > Libellés), puis il apparaîtra ici.");
   };
 
   return (
@@ -136,7 +161,7 @@ export default function NotesScreen() {
           <Search size={18} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher vos notes"
+            placeholder={selectedLabel ? `Rechercher dans ${selectedLabel}` : 'Rechercher vos notes'}
             placeholderTextColor="#9CA3AF"
             value={search}
             onChangeText={setSearch}
@@ -144,7 +169,7 @@ export default function NotesScreen() {
         </BlurView>
       </View>
 
-      <Text style={styles.sectionTitle}>{hasPinned ? 'Notes épinglées' : 'Toutes les notes'}</Text>
+      <Text style={styles.sectionTitle}>{selectedLabel || (hasPinned ? 'Notes épinglées' : 'Toutes les notes')}</Text>
 
       <FlatList
         data={filteredNotes}
@@ -160,7 +185,13 @@ export default function NotesScreen() {
               pinned={item.pinned}
               labels={item.labels}
               isDragging={draggingId === item.id}
-              onLongPress={() => setDraggingId(item.id)}
+              onLongPress={() => {
+                if (search.trim() || selectedLabel) {
+                  Alert.alert('Réorganisation', 'Enlève la recherche et le filtre de libellé pour déplacer une note.');
+                  return;
+                }
+                setDraggingId(item.id);
+              }}
               onPress={() => (draggingId ? onDropOnNote(item.id) : router.push(`/editor/${item.id}`))}
             />
           </View>
@@ -183,8 +214,30 @@ export default function NotesScreen() {
             <Text style={styles.drawerTitle}>Nora AI</Text>
             <Text style={styles.drawerSubtitle}>{user?.email || 'Connecté'}</Text>
 
-            <DrawerItem icon={<StickyNote size={19} color="#E5E7EB" />} label="Notes" active onPress={() => setDrawerOpen(false)} />
+            <DrawerItem icon={<StickyNote size={19} color="#E5E7EB" />} label="Notes" active={!selectedLabel} onPress={() => { setSelectedLabel(null); setDrawerOpen(false); }} />
             <DrawerItem icon={<Bell size={19} color="#E5E7EB" />} label="Rappels" onPress={() => onComingSoon('Rappels')} />
+
+            <View style={styles.drawerDivider} />
+            <View style={styles.labelHeader}>
+              <Text style={styles.labelHeaderTitle}>Libellés</Text>
+            </View>
+
+            {allLabels.map((label) => (
+              <DrawerItem
+                key={label}
+                icon={<Tag size={18} color="#E5E7EB" />}
+                label={label}
+                active={selectedLabel?.toLowerCase() === label.toLowerCase()}
+                onPress={() => {
+                  setSelectedLabel(label);
+                  setDrawerOpen(false);
+                }}
+              />
+            ))}
+
+            <DrawerItem icon={<Plus size={18} color="#E5E7EB" />} label="Nouveau libellé" onPress={addLabelShortcut} />
+
+            <View style={styles.drawerDivider} />
             <DrawerItem icon={<Archive size={19} color="#E5E7EB" />} label="Archives" onPress={() => onComingSoon('Archives')} />
             <DrawerItem icon={<Trash2 size={19} color="#E5E7EB" />} label="Corbeille" onPress={() => onComingSoon('Corbeille')} />
             <DrawerItem icon={<Settings size={19} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
@@ -265,8 +318,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
-  drawerTitle: { color: '#F3F4F6', fontSize: 30 / 1.2, fontWeight: '700' },
-  drawerSubtitle: { color: '#9CA3AF', marginTop: 2, marginBottom: 18 },
+  drawerTitle: { color: '#F3F4F6', fontSize: 25, fontWeight: '700' },
+  drawerSubtitle: { color: '#9CA3AF', marginTop: 2, marginBottom: 14 },
+  drawerDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 10, marginHorizontal: 2 },
+  labelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, paddingHorizontal: 10 },
+  labelHeaderTitle: { color: '#D1D5DB', fontSize: 16, fontWeight: '600' },
   drawerItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -277,6 +333,6 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  drawerItemActive: { backgroundColor: 'rgba(37,99,235,0.7)' },
+  drawerItemActive: { backgroundColor: 'rgba(74,113,194,0.75)' },
   drawerText: { color: '#F3F4F6', fontSize: 15.5, flex: 1 },
 });

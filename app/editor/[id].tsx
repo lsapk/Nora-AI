@@ -35,47 +35,37 @@ type Note = {
   pinned?: boolean | null;
 };
 
-type PendingFormat = 'bold' | 'italic' | 'underline' | 'h1' | 'h2' | 'checklist' | null;
+type TextFormat = 'bold' | 'italic' | 'underline' | 'h1' | 'h2' | 'checklist';
 
 const NOTE_COLORS = ['#0B1020', '#1F2937', '#7E102B', '#2C6B5A', '#7A4B00', '#274E68', '#5A2D70', '#FFFFFF'];
 
-const BOLD_MAP: Record<string, string> = {
-  a: '𝗮', b: '𝗯', c: '𝗰', d: '𝗱', e: '𝗲', f: '𝗳', g: '𝗴', h: '𝗵', i: '𝗶', j: '𝗷', k: '𝗸', l: '𝗹', m: '𝗺', n: '𝗻', o: '𝗼', p: '𝗽', q: '𝗾', r: '𝗿', s: '𝘀', t: '𝘁', u: '𝘂', v: '𝘃', w: '𝘄', x: '𝘅', y: '𝘆', z: '𝘇',
-  A: '𝗔', B: '𝗕', C: '𝗖', D: '𝗗', E: '𝗘', F: '𝗙', G: '𝗚', H: '𝗛', I: '𝗜', J: '𝗝', K: '𝗞', L: '𝗟', M: '𝗠', N: '𝗡', O: '𝗢', P: '𝗣', Q: '𝗤', R: '𝗥', S: '𝗦', T: '𝗧', U: '𝗨', V: '𝗩', W: '𝗪', X: '𝗫', Y: '𝗬', Z: '𝗭',
-};
-
-const ITALIC_MAP: Record<string, string> = {
-  a: '𝘢', b: '𝘣', c: '𝘤', d: '𝘥', e: '𝘦', f: '𝘧', g: '𝘨', h: '𝘩', i: '𝘪', j: '𝘫', k: '𝘬', l: '𝘭', m: '𝘮', n: '𝘯', o: '𝘰', p: '𝘱', q: '𝘲', r: '𝘳', s: '𝘴', t: '𝘵', u: '𝘶', v: '𝘷', w: '𝘸', x: '𝘹', y: '𝘺', z: '𝘻',
-  A: '𝘈', B: '𝘉', C: '𝘊', D: '𝘋', E: '𝘌', F: '𝘍', G: '𝘎', H: '𝘏', I: '𝘐', J: '𝘑', K: '𝘒', L: '𝘓', M: '𝘔', N: '𝘕', O: '𝘖', P: '𝘗', Q: '𝘘', R: '𝘙', S: '𝘚', T: '𝘛', U: '𝘜', V: '𝘝', W: '𝘞', X: '𝘟', Y: '𝘠', Z: '𝘡',
-};
-
-const mapChars = (text: string, map: Record<string, string>) => text.split('').map((char) => map[char] || char).join('');
-const underlineText = (text: string) => text.split('').map((char) => (char.trim() ? `${char}\u0332` : char)).join('');
-
-const formatText = (text: string, format: Exclude<PendingFormat, null>) => {
+const formatSelectedText = (text: string, format: TextFormat) => {
   switch (format) {
     case 'bold':
-      return mapChars(text, BOLD_MAP);
+      return `**${text}**`;
     case 'italic':
-      return mapChars(text, ITALIC_MAP);
+      return `*${text}*`;
     case 'underline':
-      return underlineText(text);
+      return `<u>${text}</u>`;
     case 'h1':
-      return text.toUpperCase();
+      return text
+        .split("\n")
+        .map((line) => (line.startsWith('# ') ? line : `# ${line}`))
+        .join("\n");
     case 'h2':
       return text
-        .toLowerCase()
-        .replace(/\b\w/g, (match) => match.toUpperCase());
+        .split("\n")
+        .map((line) => (line.startsWith('## ') ? line : `## ${line}`))
+        .join("\n");
     case 'checklist':
       return text
-        .split('\n')
-        .map((line) => (line.startsWith('☐ ') ? line : `☐ ${line}`))
-        .join('\n');
+        .split("\n")
+        .map((line) => (line.startsWith('- [ ] ') ? line : `- [ ] ${line}`))
+        .join("\n");
     default:
       return text;
   }
 };
-
 export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const noteId = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
@@ -91,7 +81,6 @@ export default function EditorScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [contentSelection, setContentSelection] = useState({ start: 0, end: 0 });
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [pendingFormat, setPendingFormat] = useState<PendingFormat>(null);
 
   const [noteColor, setNoteColor] = useState(isDark ? '#0B1020' : '#FFFFFF');
   const [labels, setLabels] = useState<string[]>([]);
@@ -182,50 +171,42 @@ export default function EditorScreen() {
     }
   };
 
-  const applySelectedFormat = (format: Exclude<PendingFormat, null>) => {
+  const applySelectedFormat = (format: TextFormat) => {
     const start = contentSelection.start;
     const end = contentSelection.end;
 
-    if (start === end) {
-      setPendingFormat((p) => (p === format ? null : format));
+    if (start !== end) {
+      const selected = content.slice(start, end);
+      const transformed = formatSelectedText(selected, format);
+      const next = `${content.slice(0, start)}${transformed}${content.slice(end)}`;
+      updateContentWithSelection(next, { start, end: start + transformed.length });
       return;
     }
 
-    const selected = content.slice(start, end);
-    const transformed = formatText(selected, format);
-    const next = `${content.slice(0, start)}${transformed}${content.slice(end)}`;
-    updateContentWithSelection(next, { start, end: start + transformed.length });
-    setPendingFormat(null);
-  };
-
-  const applyPendingToInserted = (nextText: string) => {
-    if (!pendingFormat || nextText.length <= content.length) {
-      setContent(nextText);
+    if (format === 'bold' || format === 'italic' || format === 'underline') {
+      const wrappers: Record<TextFormat, [string, string]> = {
+        bold: ['**', '**'],
+        italic: ['*', '*'],
+        underline: ['<u>', '</u>'],
+        h1: ['# ', ''],
+        h2: ['## ', ''],
+        checklist: ['- [ ] ', ''],
+      };
+      const [prefix, suffix] = wrappers[format];
+      const next = `${content.slice(0, start)}${prefix}${suffix}${content.slice(end)}`;
+      const cursor = start + prefix.length;
+      updateContentWithSelection(next, { start: cursor, end: cursor });
       return;
     }
 
-    let start = 0;
-    while (start < content.length && content[start] === nextText[start]) start += 1;
-
-    let endOld = content.length - 1;
-    let endNew = nextText.length - 1;
-    while (endOld >= start && endNew >= start && content[endOld] === nextText[endNew]) {
-      endOld -= 1;
-      endNew -= 1;
-    }
-
-    const inserted = nextText.slice(start, endNew + 1);
-    if (!inserted) {
-      setContent(nextText);
-      return;
-    }
-
-    const transformed = formatText(inserted, pendingFormat);
-    const patched = `${nextText.slice(0, start)}${transformed}${nextText.slice(endNew + 1)}`;
-    setContent(patched);
-
-    const cursor = start + transformed.length;
-    setTimeout(() => setContentSelection({ start: cursor, end: cursor }), 0);
+    const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+    const lineEnd = content.indexOf("\n", start);
+    const endIndex = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(lineStart, endIndex);
+    const transformed = formatSelectedText(line || ' ', format);
+    const next = `${content.slice(0, lineStart)}${transformed}${content.slice(endIndex)}`;
+    const cursor = lineStart + transformed.length;
+    updateContentWithSelection(next, { start: cursor, end: cursor });
   };
 
   const addImage = async () => {
@@ -281,7 +262,7 @@ export default function EditorScreen() {
 
           <TextInput
             value={content}
-            onChangeText={applyPendingToInserted}
+            onChangeText={setContent}
             placeholder="Commencez à écrire..."
             placeholderTextColor={subtleTextColor}
             style={[styles.content, { color: textColor }]}
@@ -292,7 +273,7 @@ export default function EditorScreen() {
           />
         </ScrollView>
 
-        <View style={[styles.bottomWrap, { bottom: Math.max(insets.bottom + 8, keyboardHeight + 8) }]}> 
+        <View style={[styles.bottomWrap, { bottom: Math.max(insets.bottom + 8, keyboardHeight + 52) }]}> 
           <View style={styles.bottomBar}>
             <View style={{ flexDirection: 'row', gap: 4 }}>
               <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('add')}><PlusSquare size={19} color={textColor} /></TouchableOpacity>
@@ -300,7 +281,7 @@ export default function EditorScreen() {
               <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('text')}><Type size={19} color={textColor} /></TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', gap: 4 }}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => { setContent(note?.content || ''); setPendingFormat(null); }}><Undo2 size={19} color={textColor} /></TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => { setContent(note?.content || ''); }}><Undo2 size={19} color={textColor} /></TouchableOpacity>
               <TouchableOpacity style={styles.iconBtn} onPress={() => setShowPanel('more')}><MoreVertical size={19} color={textColor} /></TouchableOpacity>
             </View>
           </View>
@@ -328,12 +309,12 @@ export default function EditorScreen() {
               )}
               {showPanel === 'text' && (
                 <View style={styles.textRow}>
-                  <PanelMini label="H1" active={pendingFormat === 'h1'} onPress={() => applySelectedFormat('h1')} />
-                  <PanelMini label="H2" active={pendingFormat === 'h2'} onPress={() => applySelectedFormat('h2')} />
-                  <PanelMini label="Aa" active={pendingFormat === 'checklist'} onPress={() => applySelectedFormat('checklist')} />
-                  <PanelMini label="B" active={pendingFormat === 'bold'} onPress={() => applySelectedFormat('bold')} />
-                  <PanelMini label="I" active={pendingFormat === 'italic'} onPress={() => applySelectedFormat('italic')} />
-                  <PanelMini label="U" active={pendingFormat === 'underline'} onPress={() => applySelectedFormat('underline')} />
+                  <PanelMini label="H1" onPress={() => applySelectedFormat('h1')} />
+                  <PanelMini label="H2" onPress={() => applySelectedFormat('h2')} />
+                  <PanelMini label="Aa" onPress={() => applySelectedFormat('checklist')} />
+                  <PanelMini label="B" onPress={() => applySelectedFormat('bold')} />
+                  <PanelMini label="I" onPress={() => applySelectedFormat('italic')} />
+                  <PanelMini label="U" onPress={() => applySelectedFormat('underline')} />
                 </View>
               )}
               {showPanel === 'more' && (
