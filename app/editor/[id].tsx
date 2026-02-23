@@ -279,19 +279,17 @@ export default function EditorScreen() {
             </ScrollView>
           )}
 
-          <View style={styles.editorSurface}>
-            <TextInput
-              value={content}
-              onChangeText={applyPendingToInserted}
-              placeholder="Commencez à écrire..."
-              placeholderTextColor={subtleTextColor}
-              style={[styles.content, { color: textColor }]}
-              multiline
-              textAlignVertical="top"
-              selection={contentSelection}
-              onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
-            />
-          </View>
+          <TextInput
+            value={content}
+            onChangeText={applyPendingToInserted}
+            placeholder="Commencez à écrire..."
+            placeholderTextColor={subtleTextColor}
+            style={[styles.content, { color: textColor }]}
+            multiline
+            textAlignVertical="top"
+            selection={contentSelection}
+            onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
+          />
         </ScrollView>
 
         <View style={[styles.bottomWrap, { bottom: Math.max(insets.bottom + 8, keyboardHeight + 8) }]}> 
@@ -398,42 +396,34 @@ function PanelMini({ label, onPress, active = false }: { label: string; onPress:
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  editorTop: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 8 },
+  editorTop: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
   topBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 48,
+    height: 48,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(0,0,0,0.16)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(148,163,184,0.24)',
   },
-  title: { fontSize: 32, fontWeight: '600', marginBottom: 10, letterSpacing: -0.2 },
-  labels: { fontSize: 12, marginBottom: 8, opacity: 0.9 },
+  title: { fontSize: 48, fontWeight: '700', marginBottom: 8, letterSpacing: -0.4, paddingHorizontal: 2 },
+  labels: { fontSize: 12.5, marginBottom: 8, opacity: 0.9, paddingHorizontal: 2 },
   noteImage: { width: 150, height: 95, borderRadius: 12, marginRight: 8 },
-  editorSurface: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  content: { minHeight: 420, fontSize: 16.5, lineHeight: 24 },
-  bottomWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
+  content: { minHeight: 460, fontSize: 16.5, lineHeight: 25, paddingHorizontal: 2, paddingTop: 8 },
+  bottomWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 16 },
   bottomBar: {
-    height: 58,
-    borderRadius: 18,
+    height: 70,
+    borderRadius: 22,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: '#0F172ACC',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#3B445B',
   },
-  iconBtn: { width: 39, height: 39, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   panelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
   panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 12, backgroundColor: '#0B1220', borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   panelItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },

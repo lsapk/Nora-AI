@@ -28,8 +28,8 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
         styles.card,
         {
           backgroundColor: color || '#FFFFFF',
-          borderColor: isDragging ? '#2563EB' : isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.16)',
-          transform: [{ scale: isDragging ? 0.98 : 1 }],
+          borderColor: isDragging ? '#8CB2FF' : isLight ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.18)',
+          transform: [{ scale: isDragging ? 0.985 : 1 }],
         },
       ]}
       onPress={onPress || (() => router.push(`/editor/${id}`))}
@@ -37,11 +37,11 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
       delayLongPress={220}
     >
       <View style={styles.rowTop}>
-        {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>{title}</Text> : <Text style={[styles.emptyTitle, { color: textColor }]}>Note rapide</Text>}
+        {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={3}>{title}</Text> : <Text style={[styles.emptyTitle, { color: textColor }]}>Note rapide</Text>}
         {pinned ? <Pin size={14} color={textColor} /> : null}
       </View>
 
-      <Text style={[styles.content, { color: textColor }]} numberOfLines={5}>
+      <Text style={[styles.content, { color: textColor }]} numberOfLines={8}>
         {content || 'Aucun contenu'}
       </Text>
 
@@ -53,21 +53,21 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    minHeight: 132,
+    minHeight: 148,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  title: { fontSize: 15.5, fontWeight: '700', flex: 1, marginRight: 8 },
-  emptyTitle: { fontSize: 14, opacity: 0.6, fontWeight: '600', flex: 1 },
-  content: { fontSize: 14, lineHeight: 20 },
-  labels: { marginTop: 8, fontSize: 12, opacity: 0.9 },
-  date: { fontSize: 11.5, marginTop: 10, opacity: 0.7 },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  title: { fontSize: 16, fontWeight: '700', flex: 1, marginRight: 8 },
+  emptyTitle: { fontSize: 15, opacity: 0.6, fontWeight: '600', flex: 1 },
+  content: { fontSize: 15, lineHeight: 22 },
+  labels: { marginTop: 8, fontSize: 12.5, opacity: 0.9 },
+  date: { fontSize: 12, marginTop: 10, opacity: 0.72 },
 });
