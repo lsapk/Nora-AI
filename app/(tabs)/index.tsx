@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  LayoutAnimation,
   Modal,
   RefreshControl,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  UIManager,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -40,6 +42,12 @@ export default function NotesScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
 
   const { data: notes = [], isLoading, refetch } = useQuery({
     queryKey: ['notes', user?.id],
@@ -145,9 +153,36 @@ export default function NotesScreen() {
     Alert.alert(label, 'Cette section arrive bientôt.');
   };
 
+  const normalizeLabel = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+  const createLabel = async () => {
+    const next = normalizeLabel(newLabelName);
+    if (!next) return;
+    if (allLabels.some((l) => l.toLowerCase() === next.toLowerCase())) {
+      Alert.alert('Libellé', 'Ce libellé existe déjà.');
+      return;
+    }
+    setNewLabelName('');
+    setLabelModalOpen(false);
+    setSelectedLabel(next);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Alert.alert('Libellé créé', `Le libellé “${next}” est prêt. Ajoute-le aux notes depuis l’éditeur.`);
+  };
+
+  const deleteLabel = async (labelToDelete: string) => {
+    const impacted = (notes as NoteRow[]).filter((note) => (note.labels || []).some((l) => l.toLowerCase() === labelToDelete.toLowerCase()));
+    for (const note of impacted) {
+      const labels = (note.labels || []).filter((l) => l.toLowerCase() !== labelToDelete.toLowerCase());
+      await supabase.from('notes').update({ labels }).eq('id', note.id).eq('user_id', user?.id);
+    }
+    if (selectedLabel?.toLowerCase() === labelToDelete.toLowerCase()) setSelectedLabel(null);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    refetch();
+  };
+
   const addLabelShortcut = () => {
     setDrawerOpen(false);
-    Alert.alert('Libellés', "Crée un libellé depuis l'éditeur (menu Plus > Libellés), puis il apparaîtra ici.");
+    setLabelModalOpen(true);
   };
 
   return (
@@ -236,6 +271,7 @@ export default function NotesScreen() {
             ))}
 
             <DrawerItem icon={<Plus size={18} color="#E5E7EB" />} label="Nouveau libellé" onPress={addLabelShortcut} />
+            <DrawerItem icon={<Tag size={18} color="#E5E7EB" />} label="Gérer les libellés" onPress={() => { setDrawerOpen(false); setLabelModalOpen(true); }} />
 
             <View style={styles.drawerDivider} />
             <DrawerItem icon={<Archive size={19} color="#E5E7EB" />} label="Archives" onPress={() => onComingSoon('Archives')} />
@@ -243,6 +279,36 @@ export default function NotesScreen() {
             <DrawerItem icon={<Settings size={19} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
             <DrawerItem icon={<HelpCircle size={19} color="#E5E7EB" />} label="Aide" onPress={() => onComingSoon('Aide')} />
             <DrawerItem icon={<LogOut size={19} color="#E5E7EB" />} label="Se déconnecter" onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={labelModalOpen} transparent animationType="fade" onRequestClose={() => setLabelModalOpen(false)}>
+        <View style={styles.drawerOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setLabelModalOpen(false)} />
+          <View style={styles.labelModal}>
+            <Text style={styles.labelModalTitle}>Gérer les libellés</Text>
+            <View style={styles.labelInputRow}>
+              <TextInput
+                value={newLabelName}
+                onChangeText={setNewLabelName}
+                placeholder="Nouveau libellé"
+                placeholderTextColor="#9CA3AF"
+                style={styles.labelInput}
+              />
+              <TouchableOpacity style={styles.labelCreateBtn} onPress={createLabel}>
+                <Plus size={18} color="#0C101A" />
+              </TouchableOpacity>
+            </View>
+
+            {allLabels.map((label) => (
+              <View key={label} style={styles.labelRow}>
+                <Text style={styles.labelRowText}>{label}</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={styles.labelAction} onPress={() => deleteLabel(label)}><Text style={styles.labelActionText}>Supprimer</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
         </View>
       </Modal>
@@ -335,4 +401,48 @@ const styles = StyleSheet.create({
   },
   drawerItemActive: { backgroundColor: 'rgba(74,113,194,0.75)' },
   drawerText: { color: '#F3F4F6', fontSize: 15.5, flex: 1 },
+  labelModal: {
+    marginTop: 120,
+    marginHorizontal: 18,
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    gap: 12,
+  },
+  labelModalTitle: { color: '#F9FAFB', fontSize: 21, fontWeight: '700' },
+  labelInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  labelInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    color: '#F9FAFB',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  labelCreateBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#AFC8FF',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  labelRowText: { color: '#E5E7EB', fontSize: 15, fontWeight: '600' },
+  labelAction: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  labelActionText: { color: '#E5E7EB', fontSize: 12 },
 });
