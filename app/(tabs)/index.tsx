@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   LayoutAnimation,
   Modal,
   RefreshControl,
@@ -15,11 +14,14 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight, Tag } from 'lucide-react-native';
+import { Menu, Search, Plus, Bell, Archive, Trash2, Settings, HelpCircle, StickyNote, LogOut, ChevronRight, Tag, Folder, GripVertical } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
+import { useFolders } from '../../context/folder';
 import NoteCard from '../../components/NoteCard';
 
 type NoteRow = {
@@ -31,10 +33,13 @@ type NoteRow = {
   pinned?: boolean;
   labels?: string[];
   order_index?: number;
+  folder_id?: string;
+  archived?: boolean;
 };
 
 export default function NotesScreen() {
   const { user } = useAuth();
+  const { folders, createFolder, deleteFolder } = useFolders();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -42,17 +47,22 @@ export default function NotesScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
+
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   if (UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 
   const { data: notes = [], isLoading, refetch } = useQuery({
-    queryKey: ['notes', user?.id],
+    queryKey: ['notes', user?.id, showArchived],
     queryFn: async () => {
-      let query = supabase.from('notes').select('*').eq('user_id', user?.id).order('pinned', { ascending: false });
+      let query = supabase.from('notes').select('*').eq('user_id', user?.id).eq('archived', showArchived).order('pinned', { ascending: false });
       const { data, error } = await query.order('order_index', { ascending: true }).order('updated_at', { ascending: false });
       if (error && /order_index/i.test(error.message || '')) {
         const fallback = await supabase
@@ -82,21 +92,27 @@ export default function NotesScreen() {
     return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [notes]);
 
-  const notesForLabel = useMemo(
-    () =>
-      selectedLabel
-        ? (notes as NoteRow[]).filter((note) => (note.labels || []).some((label) => label.toLowerCase() === selectedLabel.toLowerCase()))
-        : (notes as NoteRow[]),
-    [notes, selectedLabel]
+  const notesForFilter = useMemo(
+    () => {
+      let filtered = notes as NoteRow[];
+      if (selectedLabel) {
+        filtered = filtered.filter((note) => (note.labels || []).some((label) => label.toLowerCase() === selectedLabel.toLowerCase()));
+      }
+      if (selectedFolderId) {
+        filtered = filtered.filter((note) => note.folder_id === selectedFolderId);
+      }
+      return filtered;
+    },
+    [notes, selectedLabel, selectedFolderId]
   );
 
   const filteredNotes = useMemo(
     () =>
-      notesForLabel.filter((note) => {
+      notesForFilter.filter((note) => {
         const q = search.toLowerCase();
-        return note.title?.toLowerCase().includes(q) || note.content?.toLowerCase().includes(q);
+        return (note.title || '').toLowerCase().includes(q) || (note.content || '').toLowerCase().includes(q);
       }),
-    [notesForLabel, search]
+    [notesForFilter, search]
   );
 
   const hasPinned = useMemo(() => filteredNotes.some((note) => note.pinned), [filteredNotes]);
@@ -104,7 +120,14 @@ export default function NotesScreen() {
   const createNote = async () => {
     const { data } = await supabase
       .from('notes')
-      .insert({ user_id: user?.id, content: '', note_color: '#FFFFFF', labels: selectedLabel ? [selectedLabel] : [], order_index: Date.now() } as any)
+      .insert({
+        user_id: user?.id,
+        content: '',
+        note_color: '#0F172A',
+        labels: selectedLabel ? [selectedLabel] : [],
+        folder_id: selectedFolderId,
+        order_index: Date.now()
+      } as any)
       .select()
       .single();
 
@@ -155,6 +178,18 @@ export default function NotesScreen() {
 
   const normalizeLabel = (value: string) => value.trim().replace(/\s+/g, ' ');
 
+  const createNewFolder = async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    const folder = await createFolder(name);
+    if (folder) {
+      setNewFolderName('');
+      setFolderModalOpen(false);
+      setSelectedFolderId(folder.id);
+      setSelectedLabel(null);
+    }
+  };
+
   const createLabel = async () => {
     const next = normalizeLabel(newLabelName);
     if (!next) return;
@@ -186,6 +221,7 @@ export default function NotesScreen() {
   };
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaView style={styles.container}>
       <View style={styles.topRow}>
         <TouchableOpacity style={styles.menuBtn} onPress={() => setDrawerOpen(true)}>
@@ -204,43 +240,42 @@ export default function NotesScreen() {
         </BlurView>
       </View>
 
-      <Text style={styles.sectionTitle}>{selectedLabel || (hasPinned ? 'Notes épinglées' : 'Toutes les notes')}</Text>
+      <Text style={styles.sectionTitle}>
+        {showArchived ? 'Archives' : (selectedLabel || (selectedFolderId ? folders.find(f => f.id === selectedFolderId)?.name : (hasPinned ? 'Notes épinglées' : 'Toutes les notes')))}
+      </Text>
 
-      <FlatList
+      <DraggableFlatList
         data={filteredNotes}
         keyExtractor={(item: any) => item.id}
-        renderItem={({ item }: any) => (
-          <View style={styles.noteWrapper}>
-            <NoteCard
-              id={item.id}
-              title={item.title}
-              content={item.content}
-              updated_at={item.updated_at}
-              color={item.note_color}
-              pinned={item.pinned}
-              labels={item.labels}
-              isDragging={draggingId === item.id}
-              onLongPress={() => {
-                if (search.trim() || selectedLabel) {
-                  Alert.alert('Réorganisation', 'Enlève la recherche et le filtre de libellé pour déplacer une note.');
-                  return;
-                }
-                setDraggingId(item.id);
-              }}
-              onPress={() => (draggingId ? onDropOnNote(item.id) : router.push(`/editor/${item.id}`))}
-            />
-          </View>
+        onDragEnd={({ data }) => persistOrder(data.map(n => n.id))}
+        renderItem={({ item, drag, isActive }: RenderItemParams<NoteRow>) => (
+          <ScaleDecorator>
+            <View style={[styles.noteWrapperFull, isActive && { zIndex: 999 }]}>
+              <NoteCard
+                id={item.id}
+                title={item.title}
+                content={item.content}
+                updated_at={item.updated_at}
+                color={item.note_color}
+                pinned={item.pinned}
+                labels={item.labels}
+                isDragging={isActive}
+                onLongPress={drag}
+                onPress={() => router.push(`/editor/${item.id}`)}
+              />
+            </View>
+          </ScaleDecorator>
         )}
-        numColumns={2}
-        columnWrapperStyle={styles.columnWrapper}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: insets.bottom + 112 }}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
         ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>Aucune note pour le moment</Text> : null}
       />
 
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 18 }]} onPress={createNote}>
-        <Plus size={34} color="#132039" />
-      </TouchableOpacity>
+      {!showArchived && (
+        <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 18 }]} onPress={createNote}>
+          <Plus size={34} color="#132039" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.drawerOverlay}>
@@ -249,8 +284,27 @@ export default function NotesScreen() {
             <Text style={styles.drawerTitle}>Nora AI</Text>
             <Text style={styles.drawerSubtitle}>{user?.email || 'Connecté'}</Text>
 
-            <DrawerItem icon={<StickyNote size={19} color="#E5E7EB" />} label="Notes" active={!selectedLabel} onPress={() => { setSelectedLabel(null); setDrawerOpen(false); }} />
-            <DrawerItem icon={<Bell size={19} color="#E5E7EB" />} label="Rappels" onPress={() => onComingSoon('Rappels')} />
+            <DrawerItem icon={<StickyNote size={19} color="#E5E7EB" />} label="Notes" active={!selectedLabel && !selectedFolderId && !showArchived} onPress={() => { setSelectedLabel(null); setSelectedFolderId(null); setShowArchived(false); setDrawerOpen(false); }} />
+
+            <View style={styles.drawerDivider} />
+            <View style={styles.labelHeader}>
+              <Text style={styles.labelHeaderTitle}>Dossiers</Text>
+            </View>
+
+            {folders.map((folder) => (
+              <DrawerItem
+                key={folder.id}
+                icon={<Folder size={18} color="#E5E7EB" />}
+                label={folder.name}
+                active={selectedFolderId === folder.id}
+                onPress={() => {
+                  setSelectedFolderId(folder.id);
+                  setSelectedLabel(null);
+                  setDrawerOpen(false);
+                }}
+              />
+            ))}
+            <DrawerItem icon={<Plus size={18} color="#E5E7EB" />} label="Nouveau dossier" onPress={() => { setDrawerOpen(false); setFolderModalOpen(true); }} />
 
             <View style={styles.drawerDivider} />
             <View style={styles.labelHeader}>
@@ -274,11 +328,40 @@ export default function NotesScreen() {
             <DrawerItem icon={<Tag size={18} color="#E5E7EB" />} label="Gérer les libellés" onPress={() => { setDrawerOpen(false); setLabelModalOpen(true); }} />
 
             <View style={styles.drawerDivider} />
-            <DrawerItem icon={<Archive size={19} color="#E5E7EB" />} label="Archives" onPress={() => onComingSoon('Archives')} />
-            <DrawerItem icon={<Trash2 size={19} color="#E5E7EB" />} label="Corbeille" onPress={() => onComingSoon('Corbeille')} />
+            <DrawerItem icon={<Archive size={19} color="#E5E7EB" />} label="Archives" active={showArchived} onPress={() => { setShowArchived(true); setSelectedLabel(null); setSelectedFolderId(null); setDrawerOpen(false); }} />
             <DrawerItem icon={<Settings size={19} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
             <DrawerItem icon={<HelpCircle size={19} color="#E5E7EB" />} label="Aide" onPress={() => onComingSoon('Aide')} />
             <DrawerItem icon={<LogOut size={19} color="#E5E7EB" />} label="Se déconnecter" onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={folderModalOpen} transparent animationType="fade" onRequestClose={() => setFolderModalOpen(false)}>
+        <View style={styles.drawerOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setFolderModalOpen(false)} />
+          <View style={styles.labelModal}>
+            <Text style={styles.labelModalTitle}>Gérer les dossiers</Text>
+            <View style={styles.labelInputRow}>
+              <TextInput
+                value={newFolderName}
+                onChangeText={setNewFolderName}
+                placeholder="Nouveau dossier"
+                placeholderTextColor="#9CA3AF"
+                style={styles.labelInput}
+              />
+              <TouchableOpacity style={styles.labelCreateBtn} onPress={createNewFolder}>
+                <Plus size={18} color="#0C101A" />
+              </TouchableOpacity>
+            </View>
+
+            {folders.map((folder) => (
+              <View key={folder.id} style={styles.labelRow}>
+                <Text style={styles.labelRowText}>{folder.name}</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={styles.labelAction} onPress={() => deleteFolder(folder.id)}><Text style={styles.labelActionText}>Supprimer</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
         </View>
       </Modal>
@@ -313,6 +396,7 @@ export default function NotesScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -357,6 +441,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#E5E7EB', fontSize: 28, fontWeight: '700', marginTop: 14, marginHorizontal: 14, marginBottom: 8 },
   columnWrapper: { justifyContent: 'space-between' },
   noteWrapper: { flex: 0.488 },
+  noteWrapperFull: { width: '100%' },
   emptyText: { color: '#9CA3AF', textAlign: 'center', marginTop: 70 },
   fab: {
     position: 'absolute',
