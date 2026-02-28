@@ -24,7 +24,7 @@ import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
 import { useFolders } from '../../context/folder';
-import { MarkdownView } from 'react-native-markdown-display';
+import Markdown from 'react-native-markdown-display';
 import AIChatOverlay from '../../components/AIChatOverlay';
 import { getAIResponse } from '../../lib/ai';
 import { searchUnsplashImages } from '../../lib/unsplash';
@@ -365,7 +365,7 @@ export default function EditorScreen() {
             />
           ) : (
             <TouchableOpacity activeOpacity={1} onPress={() => setIsEditing(true)} style={styles.markdownContainer}>
-              <MarkdownView
+              <Markdown
                 style={{
                   body: { color: textColor, fontSize: 16.5, lineHeight: 25 },
                   heading1: { color: textColor, fontWeight: '700', fontSize: 30, marginBottom: 10 },
@@ -375,7 +375,7 @@ export default function EditorScreen() {
                 }}
               >
                 {content || '*Commencez à écrire...*'}
-              </MarkdownView>
+              </Markdown>
             </TouchableOpacity>
           )}
         </ScrollView>
