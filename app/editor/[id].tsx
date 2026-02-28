@@ -19,10 +19,12 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash2, Pin, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash2, Pin, Sparkles, Folder, Archive } from 'lucide-react-native';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
+import { useFolders } from '../../context/folder';
+import { MarkdownView } from 'react-native-markdown-display';
 import AIChatOverlay from '../../components/AIChatOverlay';
 import { getAIResponse } from '../../lib/ai';
 import { searchUnsplashImages } from '../../lib/unsplash';
@@ -36,6 +38,8 @@ type Note = {
   note_color?: string | null;
   labels?: string[] | null;
   pinned?: boolean | null;
+  folder_id?: string | null;
+  archived?: boolean | null;
 };
 
 type TextFormat = 'bold' | 'italic' | 'underline' | 'h1' | 'h2' | 'checklist' | 'paragraph';
@@ -84,6 +88,7 @@ export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const noteId = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
   const { user } = useAuth();
+  const { folders } = useFolders();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
@@ -96,17 +101,20 @@ export default function EditorScreen() {
   const [note, setNote] = useState<Note | null>(null);
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [contentSelection, setContentSelection] = useState({ start: 0, end: 0 });
   const [forcedSelection, setForcedSelection] = useState<{ start: number; end: number } | undefined>(undefined);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const [noteColor, setNoteColor] = useState(isDark ? '#0B1020' : '#FFFFFF');
+  const [noteColor, setNoteColor] = useState(isDark ? '#0F172A' : '#F8FAFC');
   const [labels, setLabels] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [isArchived, setIsArchived] = useState(false);
 
-  const [showPanel, setShowPanel] = useState<'none' | 'add' | 'color' | 'text' | 'more'>('none');
+  const [showPanel, setShowPanel] = useState<'none' | 'add' | 'color' | 'text' | 'more' | 'folder'>('none');
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'ai'; content: string }[]>([]);
   const [isAITyping, setIsAITyping] = useState(false);
@@ -127,9 +135,11 @@ export default function EditorScreen() {
     setNote(n);
     setTitle(n.title || '');
     setContent(n.content || '');
-    setNoteColor(n.note_color || (isDark ? '#0B1020' : '#FFFFFF'));
+    setNoteColor(n.note_color || (isDark ? '#0F172A' : '#F8FAFC'));
     setLabels(n.labels || []);
     setIsPinned(Boolean(n.pinned));
+    setFolderId(n.folder_id || null);
+    setIsArchived(Boolean(n.archived));
     setLoading(false);
   }, [noteId, user?.id, isDark]);
 
@@ -151,7 +161,7 @@ export default function EditorScreen() {
   }, []);
 
   const saveNote = useCallback(
-    async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned) => {
+    async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned, nextFolderId = folderId, nextArchived = isArchived) => {
       if (!noteId || !user?.id) return;
       setIsSaving(true);
 
@@ -161,6 +171,8 @@ export default function EditorScreen() {
         note_color: nextColor,
         labels: nextLabels,
         pinned: nextPinned,
+        folder_id: nextFolderId,
+        archived: nextArchived,
         updated_at: new Date().toISOString(),
       } as any;
 
@@ -181,9 +193,9 @@ export default function EditorScreen() {
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => saveNote(title, content), 500);
+    const t = setTimeout(() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived), 500);
     return () => clearTimeout(t);
-  }, [title, content, noteColor, labels, isPinned, note, saveNote]);
+  }, [title, content, noteColor, labels, isPinned, folderId, isArchived, note, saveNote]);
 
   const textIsDark = noteColor === '#FFFFFF';
   const textColor = textIsDark ? '#111827' : '#F9FAFB';
@@ -260,11 +272,29 @@ export default function EditorScreen() {
     setLabels((p) => p.filter((l) => l !== label));
   };
 
+  const archiveNote = async () => {
+    setIsArchived(true);
+    // Auto-save will handle the update
+    setTimeout(() => router.back(), 600);
+  };
+
   const deleteNote = async () => {
-    if (!noteId || !user?.id) return;
-    const { error } = await supabase.from('notes').delete().eq('id', noteId).eq('user_id', user.id);
-    if (error) return Alert.alert('Erreur', error.message);
-    router.back();
+    if (!isArchived) {
+      return archiveNote();
+    }
+    Alert.alert('Supprimer', 'Voulez-vous supprimer définitivement cette note ?', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          if (!noteId || !user?.id) return;
+          const { error } = await supabase.from('notes').delete().eq('id', noteId).eq('user_id', user.id);
+          if (error) return Alert.alert('Erreur', error.message);
+          router.back();
+        },
+      },
+    ]);
   };
 
   if (loading)
@@ -286,8 +316,13 @@ export default function EditorScreen() {
             <TouchableOpacity style={styles.topBtn} onPress={() => setIsAIChatVisible(true)}>
               <Sparkles size={18} color={textColor} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.topBtn} onPress={() => setIsPinned((p) => !p)}>
-              <Pin size={18} color={textColor} />
+            {!isArchived && (
+              <TouchableOpacity style={styles.topBtn} onPress={() => setIsPinned((p) => !p)}>
+                <Pin size={18} color={isPinned ? '#AFC8FF' : textColor} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.topBtn} onPress={archiveNote}>
+              <Archive size={18} color={isArchived ? '#AFC8FF' : textColor} />
             </TouchableOpacity>
           </View>
         </View>
@@ -313,22 +348,44 @@ export default function EditorScreen() {
             </ScrollView>
           )}
 
-          <TextInput
-            ref={contentRef}
-            value={content}
-            onChangeText={setContent}
-            placeholder="Commencez à écrire..."
-            placeholderTextColor={subtleTextColor}
-            style={[styles.content, { color: textColor }]}
-            multiline
-            textAlignVertical="top"
-            selection={forcedSelection}
-            onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
-          />
+          {isEditing ? (
+            <TextInput
+              ref={contentRef}
+              value={content}
+              onChangeText={setContent}
+              placeholder="Commencez à écrire..."
+              placeholderTextColor={subtleTextColor}
+              style={[styles.content, { color: textColor }]}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+              selection={forcedSelection}
+              onBlur={() => setIsEditing(false)}
+              onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
+            />
+          ) : (
+            <TouchableOpacity activeOpacity={1} onPress={() => setIsEditing(true)} style={styles.markdownContainer}>
+              <MarkdownView
+                style={{
+                  body: { color: textColor, fontSize: 16.5, lineHeight: 25 },
+                  heading1: { color: textColor, fontWeight: '700', fontSize: 30, marginBottom: 10 },
+                  heading2: { color: textColor, fontWeight: '700', fontSize: 24, marginBottom: 8 },
+                  paragraph: { marginBottom: 10 },
+                  list_item: { color: textColor },
+                }}
+              >
+                {content || '*Commencez à écrire...*'}
+              </MarkdownView>
+            </TouchableOpacity>
+          )}
         </ScrollView>
 
-        <View style={[styles.bottomWrap, { bottom: Math.max(insets.bottom + 8, keyboardHeight + 52) }]}>
-          <View style={styles.bottomBar}>
+        <View style={[
+          styles.bottomWrap,
+          { bottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom + 8 },
+          keyboardHeight > 0 && styles.bottomWrapKeyboard
+        ]}>
+          <View style={[styles.bottomBar, keyboardHeight > 0 && styles.bottomBarKeyboard]}>
             <View style={{ flexDirection: 'row', gap: 4 }}>
               <TouchableOpacity
                 style={styles.iconBtn}
@@ -408,11 +465,39 @@ export default function EditorScreen() {
               )}
               {showPanel === 'more' && (
                 <>
-                  <PanelItem label={isSaving ? 'Sauvegarde…' : 'Enregistré'} onPress={() => saveNote(title, content)} />
+                  <PanelItem label={isSaving ? 'Sauvegarde…' : 'Enregistré'} onPress={() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived)} />
                   <PanelItem label="Envoyer" onPress={async () => Share.share({ message: `${title}\n\n${content}` })} />
                   <PanelItem label="Nouveau libellé" onPress={addLabel} />
-                  <PanelItem label="Supprimer" onPress={deleteNote} icon={<Trash2 size={18} color="#F9FAFB" />} />
+                  <PanelItem
+                    label="Déplacer vers dossier"
+                    onPress={() => setShowPanel('folder')}
+                    icon={<Folder size={18} color="#F9FAFB" />}
+                  />
+                  <PanelItem
+                    label={isArchived ? "Supprimer définitivement" : "Archiver"}
+                    onPress={deleteNote}
+                    icon={<Trash2 size={18} color="#F9FAFB" />}
+                  />
                 </>
+              )}
+              {showPanel === 'folder' && (
+                <View style={{ maxHeight: 250 }}>
+                  <ScrollView>
+                    <PanelItem
+                      label="Aucun dossier"
+                      onPress={() => { setFolderId(null); setShowPanel('none'); }}
+                      icon={folderId === null ? <Check size={16} color="#AFC8FF" /> : undefined}
+                    />
+                    {folders.map((f) => (
+                      <PanelItem
+                        key={f.id}
+                        label={f.name}
+                        onPress={() => { setFolderId(f.id); setShowPanel('none'); }}
+                        icon={folderId === f.id ? <Check size={16} color="#AFC8FF" /> : undefined}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
               )}
             </View>
           </View>
@@ -486,6 +571,8 @@ function PanelMini({ label, onPress, active = false }: { label: string; onPress:
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  bottomWrapKeyboard: { paddingHorizontal: 0 },
+  bottomBarKeyboard: { borderRadius: 0, height: 50, borderWidth: 0, borderTopWidth: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   editorTop: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
   topBtn: {
@@ -504,6 +591,7 @@ const styles = StyleSheet.create({
   labelChipText: { color: '#F3F4F6', fontSize: 12, fontWeight: '600' },
   noteImage: { width: 150, height: 95, borderRadius: 12, marginRight: 8 },
   content: { minHeight: 460, fontSize: 16.5, lineHeight: 25, paddingHorizontal: 2, paddingTop: 8 },
+  markdownContainer: { minHeight: 460, paddingTop: 8 },
   bottomWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 16 },
   bottomBar: {
     height: 70,
