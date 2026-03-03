@@ -2,10 +2,8 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import {
   Alert,
   Modal,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
-  LayoutAnimation,
   Platform,
   ScrollView,
   Share,
@@ -13,28 +11,45 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  UIManager,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Palette, PlusSquare, Type, Undo2, MoreVertical, Check, Trash2, Pin, Sparkles, Folder, Archive } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Palette,
+  Type,
+  MoreVertical,
+  Check,
+  Trash2,
+  Pin,
+  Sparkles,
+  Folder,
+  Archive,
+  Bold,
+  Italic,
+  Underline,
+  List,
+  ListTodo,
+  Heading1,
+  Heading2,
+  ChevronDown,
+  Plus,
+  Tag
+} from 'lucide-react-native';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
 import { useFolders } from '../../context/folder';
-import Markdown from 'react-native-markdown-display';
+import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import AIChatOverlay from '../../components/AIChatOverlay';
 import { getAIResponse } from '../../lib/ai';
-import { searchUnsplashImages } from '../../lib/unsplash';
 
 type Note = {
   id: string;
   user_id: string;
   title: string | null;
   content: string | null;
-  images_urls: string[] | null;
   note_color?: string | null;
   labels?: string[] | null;
   pinned?: boolean | null;
@@ -42,47 +57,7 @@ type Note = {
   archived?: boolean | null;
 };
 
-type TextFormat = 'bold' | 'italic' | 'underline' | 'h1' | 'h2' | 'checklist' | 'paragraph';
-
-const NOTE_COLORS = ['#0B1020', '#1F2937', '#7E102B', '#2C6B5A', '#7A4B00', '#274E68', '#5A2D70', '#FFFFFF'];
-
-const stripFormatting = (text: string) =>
-  text
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/<u>(.*?)<\/u>/g, '$1')
-    .replace(/^#{1,2}\s+/gm, '')
-    .replace(/^-\s\[\s\]\s+/gm, '');
-
-const formatSelectedText = (text: string, format: TextFormat) => {
-  switch (format) {
-    case 'bold':
-      return `**${text}**`;
-    case 'italic':
-      return `*${text}*`;
-    case 'underline':
-      return `<u>${text}</u>`;
-    case 'h1':
-      return text
-        .split('\n')
-        .map((line) => (line.startsWith('# ') ? line : `# ${line}`))
-        .join('\n');
-    case 'h2':
-      return text
-        .split('\n')
-        .map((line) => (line.startsWith('## ') ? line : `## ${line}`))
-        .join('\n');
-    case 'checklist':
-      return text
-        .split('\n')
-        .map((line) => (line.startsWith('- [ ] ') ? line : `- [ ] ${line}`))
-        .join('\n');
-    case 'paragraph':
-      return stripFormatting(text);
-    default:
-      return text;
-  }
-};
+const NOTE_COLORS = ['#000000', '#1C1C1E', '#2C3E50', '#7E102B', '#14532D', '#7A4B00', '#1E3A8A', '#581C87'];
 
 export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -91,34 +66,24 @@ export default function EditorScreen() {
   const { folders } = useFolders();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const isDark = useColorScheme() === 'dark';
-  const contentRef = useRef<TextInput>(null);
-
-  if (UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-  }
+  const richText = useRef<RichEditor>(null);
 
   const [note, setNote] = useState<Note | null>(null);
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [contentSelection, setContentSelection] = useState({ start: 0, end: 0 });
-  const [forcedSelection, setForcedSelection] = useState<{ start: number; end: number } | undefined>(undefined);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  const [noteColor, setNoteColor] = useState(isDark ? '#0F172A' : '#F8FAFC');
+  const [noteColor, setNoteColor] = useState('#000000');
   const [labels, setLabels] = useState<string[]>([]);
+  const [allUserLabels, setAllUserLabels] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [isArchived, setIsArchived] = useState(false);
 
-  const [showPanel, setShowPanel] = useState<'none' | 'add' | 'color' | 'text' | 'more' | 'folder'>('none');
+  const [showPanel, setShowPanel] = useState<'none' | 'color' | 'more' | 'folder' | 'labels'>('none');
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'ai'; content: string }[]>([]);
   const [isAITyping, setIsAITyping] = useState(false);
-  const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
 
   const fetchNote = useCallback(async () => {
@@ -134,31 +99,33 @@ export default function EditorScreen() {
     const n = data as Note;
     setNote(n);
     setTitle(n.title || '');
-    setContent(n.content || '');
-    setNoteColor(n.note_color || (isDark ? '#0F172A' : '#F8FAFC'));
+    const noteContent = n.content || '';
+    setContent(noteContent);
+    // CRITICAL FIX: Set editor content after fetch
+    richText.current?.setContentHTML(noteContent);
+
+    setNoteColor(n.note_color || '#000000');
     setLabels(n.labels || []);
     setIsPinned(Boolean(n.pinned));
     setFolderId(n.folder_id || null);
     setIsArchived(Boolean(n.archived));
     setLoading(false);
-  }, [noteId, user?.id, isDark]);
+  }, [noteId, user?.id]);
+
+  const fetchAllLabels = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase.from('notes').select('labels').eq('user_id', user.id);
+    if (data) {
+      const set = new Set<string>();
+      data.forEach(n => (n.labels || []).forEach((l: string) => set.add(l.trim())));
+      setAllUserLabels(Array.from(set).sort());
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     fetchNote();
-  }, [fetchNote]);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, (event) => setKeyboardHeight(event.endCoordinates.height));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+    fetchAllLabels();
+  }, [fetchNote, fetchAllLabels]);
 
   const saveNote = useCallback(
     async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned, nextFolderId = folderId, nextArchived = isArchived) => {
@@ -176,112 +143,47 @@ export default function EditorScreen() {
         updated_at: new Date().toISOString(),
       } as any;
 
-      let { error } = await supabase.from('notes').update(payload).eq('id', noteId).eq('user_id', user.id);
-      if (error && /column .* does not exist/i.test(error.message || '')) {
-        ({ error } = await supabase
-          .from('notes')
-          .update({ title: nextTitle, content: nextContent, updated_at: new Date().toISOString() })
-          .eq('id', noteId)
-          .eq('user_id', user.id));
-      }
+      const { error } = await supabase.from('notes').update(payload).eq('id', noteId).eq('user_id', user.id);
 
       setIsSaving(false);
-      if (error) Alert.alert('Sauvegarde', error.message);
+      if (error) console.error('Erreur sauvegarde:', error.message);
     },
-    [noteId, user?.id, noteColor, labels, isPinned]
+    [noteId, user?.id, noteColor, labels, isPinned, folderId, isArchived]
   );
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived), 500);
+    const t = setTimeout(() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived), 1000);
     return () => clearTimeout(t);
   }, [title, content, noteColor, labels, isPinned, folderId, isArchived, note, saveNote]);
 
-  const textIsDark = noteColor === '#FFFFFF';
-  const textColor = textIsDark ? '#111827' : '#F9FAFB';
-  const subtleTextColor = textIsDark ? '#6B7280' : '#B9C2D0';
-
-  const updateContentWithSelection = (nextText: string, nextSelection?: { start: number; end: number }) => {
-    setContent(nextText);
-    if (nextSelection) {
-      setForcedSelection(nextSelection);
-      setContentSelection(nextSelection);
-      setTimeout(() => {
-        contentRef.current?.focus();
-      }, 20);
-      setTimeout(() => setForcedSelection(undefined), 80);
+  const toggleLabel = (label: string) => {
+    if (labels.includes(label)) {
+      setLabels(labels.filter(l => l !== label));
+    } else {
+      setLabels([...labels, label]);
     }
   };
 
-  const applySelectedFormat = (format: TextFormat) => {
-    const start = contentSelection.start;
-    const end = contentSelection.end;
-
-    if (start !== end) {
-      const selected = content.slice(start, end);
-      const transformed = formatSelectedText(selected, format);
-      const next = `${content.slice(0, start)}${transformed}${content.slice(end)}`;
-      updateContentWithSelection(next, { start, end: start + transformed.length });
-      return;
-    }
-
-    if (format === 'bold' || format === 'italic' || format === 'underline') {
-      const wrappers: Record<'bold' | 'italic' | 'underline', [string, string]> = {
-        bold: ['**', '**'],
-        italic: ['*', '*'],
-        underline: ['<u>', '</u>'],
-      };
-      const [prefix, suffix] = wrappers[format];
-      const next = `${content.slice(0, start)}${prefix}${suffix}${content.slice(end)}`;
-      const cursor = start + prefix.length;
-      updateContentWithSelection(next, { start: cursor, end: cursor });
-      return;
-    }
-
-    const lineStart = content.lastIndexOf('\n', start - 1) + 1;
-    const lineEnd = content.indexOf('\n', start);
-    const endIndex = lineEnd === -1 ? content.length : lineEnd;
-    const line = content.slice(lineStart, endIndex) || ' ';
-    const transformed = formatSelectedText(line, format);
-    const next = `${content.slice(0, lineStart)}${transformed}${content.slice(endIndex)}`;
-    const cursor = lineStart + transformed.length;
-    updateContentWithSelection(next, { start: cursor, end: cursor });
-  };
-
-  const addImage = async () => {
-    const imgs = await searchUnsplashImages('minimal wallpaper texture');
-    if (!imgs.length) return Alert.alert('Image', 'Aucune image trouvée.');
-    setContent((p) => `${p}${p ? '\n\n' : ''}![Image](${imgs[0]})`);
-    setShowPanel('none');
-  };
-
-  const addLabel = () => {
-    setNewLabelName('');
-    setLabelModalOpen(true);
-  };
-
-  const confirmAddLabel = () => {
+  const handleAddNewLabel = () => {
     const cleaned = newLabelName.trim();
     if (!cleaned) return;
-    if (labels.some((l) => l.toLowerCase() === cleaned.toLowerCase())) return;
-    setLabels((p) => [...p, cleaned]);
-    setLabelModalOpen(false);
-  };
-
-  const removeLabel = (label: string) => {
-    setLabels((p) => p.filter((l) => l !== label));
+    if (!labels.includes(cleaned)) {
+      setLabels([...labels, cleaned]);
+    }
+    if (!allUserLabels.includes(cleaned)) {
+      setAllUserLabels([...allUserLabels, cleaned].sort());
+    }
+    setNewLabelName('');
   };
 
   const archiveNote = async () => {
     setIsArchived(true);
-    // Auto-save will handle the update
-    setTimeout(() => router.back(), 600);
+    setTimeout(() => router.back(), 500);
   };
 
   const deleteNote = async () => {
-    if (!isArchived) {
-      return archiveNote();
-    }
+    if (!isArchived) return archiveNote();
     Alert.alert('Supprimer', 'Voulez-vous supprimer définitivement cette note ?', [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -297,233 +199,181 @@ export default function EditorScreen() {
     ]);
   };
 
-  if (loading)
-    return (
-      <View style={[styles.center, { flex: 1 }]}>
-        <Text>Chargement...</Text>
-      </View>
-    );
+  if (loading) return <View style={styles.center}><Text style={{color: '#fff'}}>Chargement...</Text></View>;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: noteColor }]} edges={['left', 'right']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={[styles.editorTop, { paddingTop: insets.top + 6 }]}>
-          <TouchableOpacity style={styles.topBtn} onPress={() => router.back()}>
-            <ArrowLeft size={20} color={textColor} />
+    <SafeAreaView style={[styles.container, { backgroundColor: noteColor }]} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+            <ArrowLeft size={24} color="#FFF" />
           </TouchableOpacity>
 
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.topBtn} onPress={() => setIsAIChatVisible(true)}>
-              <Sparkles size={18} color={textColor} />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity onPress={() => setIsAIChatVisible(true)}>
+              <Sparkles size={22} color="#FFF" />
             </TouchableOpacity>
             {!isArchived && (
-              <TouchableOpacity style={styles.topBtn} onPress={() => setIsPinned((p) => !p)}>
-                <Pin size={18} color={isPinned ? '#AFC8FF' : textColor} />
+              <TouchableOpacity onPress={() => setIsPinned(!isPinned)}>
+                <Pin size={22} color={isPinned ? '#007AFF' : '#FFF'} fill={isPinned ? '#007AFF' : 'transparent'} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.topBtn} onPress={archiveNote}>
-              <Archive size={18} color={isArchived ? '#AFC8FF' : textColor} />
+            <TouchableOpacity onPress={() => setShowPanel('more')}>
+              <MoreVertical size={22} color="#FFF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: Math.max(insets.bottom + 120, keyboardHeight + 90) }}>
-          <TextInput value={title} onChangeText={setTitle} placeholder="Titre" placeholderTextColor={subtleTextColor} style={[styles.title, { color: textColor }]} />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20 }}>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Titre"
+            placeholderTextColor="rgba(255,255,255,0.3)"
+            style={styles.titleInput}
+            multiline
+          />
 
-          {!!labels.length && (
-            <View style={styles.labelChips}>
-              {labels.map((label) => (
-                <TouchableOpacity key={label} style={styles.labelChip} onPress={() => removeLabel(label)}>
-                  <Text style={styles.labelChipText}>#{label} ✕</Text>
+          {labels.length > 0 && (
+            <View style={styles.labelScroll}>
+              {labels.map(l => (
+                <TouchableOpacity key={l} style={styles.labelChip} onPress={() => toggleLabel(l)}>
+                  <Text style={styles.labelChipText}>#{l} ✕</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
 
-          {!!note?.images_urls?.length && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              {note.images_urls.map((url, i) => (
-                <Image key={`${url}-${i}`} source={{ uri: url }} style={styles.noteImage} />
-              ))}
-            </ScrollView>
-          )}
-
-          {isEditing ? (
-            <TextInput
-              ref={contentRef}
-              value={content}
-              onChangeText={setContent}
-              placeholder="Commencez à écrire..."
-              placeholderTextColor={subtleTextColor}
-              style={[styles.content, { color: textColor }]}
-              multiline
-              autoFocus
-              textAlignVertical="top"
-              selection={forcedSelection}
-              onBlur={() => setIsEditing(false)}
-              onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
-            />
-          ) : (
-            <TouchableOpacity activeOpacity={1} onPress={() => setIsEditing(true)} style={styles.markdownContainer}>
-              <Markdown
-                style={{
-                  body: { color: textColor, fontSize: 16.5, lineHeight: 25 },
-                  heading1: { color: textColor, fontWeight: '700', fontSize: 30, marginBottom: 10 },
-                  heading2: { color: textColor, fontWeight: '700', fontSize: 24, marginBottom: 8 },
-                  paragraph: { marginBottom: 10 },
-                  list_item: { color: textColor },
-                }}
-              >
-                {content || '*Commencez à écrire...*'}
-              </Markdown>
-            </TouchableOpacity>
-          )}
+          <RichEditor
+            ref={richText}
+            initialContentHTML={content}
+            onChange={setContent}
+            placeholder="Écrivez quelque chose..."
+            editorStyle={{
+              backgroundColor: noteColor,
+              color: '#FFF',
+              placeholderColor: 'rgba(255,255,255,0.2)',
+              contentCSSText: 'font-size: 18px; line-height: 28px;',
+            }}
+            style={styles.richEditor}
+            onLoad={() => {
+              // Ensure content is set even if fetch finished before editor mount
+              if (content) richText.current?.setContentHTML(content);
+            }}
+          />
         </ScrollView>
 
-        <View style={[
-          styles.bottomWrap,
-          { bottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom + 8 },
-          keyboardHeight > 0 && styles.bottomWrapKeyboard
-        ]}>
-          <View style={[styles.bottomBar, keyboardHeight > 0 && styles.bottomBarKeyboard]}>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setShowPanel('add');
-                }}
-              >
-                <PlusSquare size={19} color={textColor} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setShowPanel('color');
-                }}
-              >
-                <Palette size={19} color={textColor} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setShowPanel('text');
-                }}
-              >
-                <Type size={19} color={textColor} />
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => setContent(note?.content || '')}>
-                <Undo2 size={19} color={textColor} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setShowPanel('more');
-                }}
-              >
-                <MoreVertical size={19} color={textColor} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+        <RichToolbar
+          editor={richText}
+          actions={[
+            actions.setBold,
+            actions.setItalic,
+            actions.setUnderline,
+            actions.insertBulletsList,
+            actions.insertOrderedList,
+            actions.checkboxList,
+            actions.heading1,
+            actions.heading2,
+            'color',
+            'labels',
+          ]}
+          iconMap={{
+            [actions.setBold]: ({ tintColor }) => <Bold size={20} color={tintColor} />,
+            [actions.setItalic]: ({ tintColor }) => <Italic size={20} color={tintColor} />,
+            [actions.setUnderline]: ({ tintColor }) => <Underline size={20} color={tintColor} />,
+            [actions.insertBulletsList]: ({ tintColor }) => <List size={20} color={tintColor} />,
+            [actions.checkboxList]: ({ tintColor }) => <ListTodo size={20} color={tintColor} />,
+            [actions.heading1]: ({ tintColor }) => <Heading1 size={20} color={tintColor} />,
+            [actions.heading2]: ({ tintColor }) => <Heading2 size={20} color={tintColor} />,
+            color: ({ tintColor }) => <Palette size={20} color={tintColor} />,
+            labels: ({ tintColor }) => <Tag size={20} color={tintColor} />,
+          }}
+          onPressAction={(action) => {
+            if (action === 'color') setShowPanel('color');
+            else if (action === 'labels') setShowPanel('labels');
+          }}
+          selectedButtonStyle={{ backgroundColor: 'transparent' }}
+          unselectedButtonStyle={{ backgroundColor: 'transparent' }}
+          selectedIconTint="#007AFF"
+          iconTint="#FFF"
+          style={styles.richBar}
+        />
 
         {showPanel !== 'none' && (
           <View style={styles.panelOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowPanel('none')} />
-            <View style={[styles.panel, { paddingBottom: insets.bottom + 18 }]}>
-              {showPanel === 'add' && (
-                <>
-                  <PanelItem label="Ajouter une image" onPress={addImage} />
-                  <PanelItem label="Cases à cocher" onPress={() => applySelectedFormat('checklist')} />
-                  <PanelItem label="Assistant IA" onPress={() => { setShowPanel('none'); setIsAIChatVisible(true); }} />
-                </>
-              )}
+            <View style={[styles.panel, { paddingBottom: insets.bottom + 20 }]}>
+              <View style={styles.panelHeader}>
+                <Text style={styles.panelTitle}>
+                  {showPanel === 'color' ? 'Couleur' : showPanel === 'labels' ? 'Libellés' : showPanel === 'folder' ? 'Dossier' : 'Options'}
+                </Text>
+                <TouchableOpacity onPress={() => setShowPanel('none')}>
+                  <ChevronDown size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
               {showPanel === 'color' && (
-                <View style={styles.colorRow}>
-                  {NOTE_COLORS.map((c) => (
+                <View style={styles.colorGrid}>
+                  {NOTE_COLORS.map(c => (
                     <TouchableOpacity key={c} style={[styles.colorDot, { backgroundColor: c }]} onPress={() => { setNoteColor(c); setShowPanel('none'); }}>
-                      {noteColor === c && <Check size={16} color={c === '#FFFFFF' ? '#111827' : '#FFFFFF'} />}
+                      {noteColor === c && <Check size={20} color="#FFF" />}
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
-              {showPanel === 'text' && (
-                <View style={styles.textRow}>
-                  <PanelMini label="H1" onPress={() => applySelectedFormat('h1')} />
-                  <PanelMini label="H2" onPress={() => applySelectedFormat('h2')} />
-                  <PanelMini label="Aa" onPress={() => applySelectedFormat('paragraph')} />
-                  <PanelMini label="B" onPress={() => applySelectedFormat('bold')} />
-                  <PanelMini label="I" onPress={() => applySelectedFormat('italic')} />
-                  <PanelMini label="U" onPress={() => applySelectedFormat('underline')} />
-                  <PanelMini label="☑" onPress={() => applySelectedFormat('checklist')} />
-                </View>
-              )}
-              {showPanel === 'more' && (
-                <>
-                  <PanelItem label={isSaving ? 'Sauvegarde…' : 'Enregistré'} onPress={() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived)} />
-                  <PanelItem label="Envoyer" onPress={async () => Share.share({ message: `${title}\n\n${content}` })} />
-                  <PanelItem label="Nouveau libellé" onPress={addLabel} />
-                  <PanelItem
-                    label="Déplacer vers dossier"
-                    onPress={() => setShowPanel('folder')}
-                    icon={<Folder size={18} color="#F9FAFB" />}
-                  />
-                  <PanelItem
-                    label={isArchived ? "Supprimer définitivement" : "Archiver"}
-                    onPress={deleteNote}
-                    icon={<Trash2 size={18} color="#F9FAFB" />}
-                  />
-                </>
-              )}
-              {showPanel === 'folder' && (
-                <View style={{ maxHeight: 250 }}>
-                  <ScrollView>
-                    <PanelItem
-                      label="Aucun dossier"
-                      onPress={() => { setFolderId(null); setShowPanel('none'); }}
-                      icon={folderId === null ? <Check size={16} color="#AFC8FF" /> : undefined}
+
+              {showPanel === 'labels' && (
+                <View style={{ gap: 20 }}>
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      value={newLabelName}
+                      onChangeText={setNewLabelName}
+                      placeholder="Nouveau libellé..."
+                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      style={styles.panelInput}
+                      onSubmitEditing={handleAddNewLabel}
                     />
-                    {folders.map((f) => (
-                      <PanelItem
-                        key={f.id}
-                        label={f.name}
-                        onPress={() => { setFolderId(f.id); setShowPanel('none'); }}
-                        icon={folderId === f.id ? <Check size={16} color="#AFC8FF" /> : undefined}
-                      />
+                    <TouchableOpacity style={styles.addBtn} onPress={handleAddNewLabel}>
+                      <Plus size={20} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.labelList}>
+                    {allUserLabels.map(l => (
+                      <TouchableOpacity
+                        key={l}
+                        style={[styles.labelChoice, labels.includes(l) && styles.labelChoiceActive]}
+                        onPress={() => toggleLabel(l)}
+                      >
+                        <Text style={[styles.labelChoiceText, labels.includes(l) && styles.labelChoiceTextActive]}>#{l}</Text>
+                        {labels.includes(l) && <Check size={14} color="#FFF" />}
+                      </TouchableOpacity>
                     ))}
-                  </ScrollView>
+                  </View>
                 </View>
+              )}
+
+              {showPanel === 'more' && (
+                <View style={{ gap: 8 }}>
+                  <PanelItem label="Partager la note" onPress={() => Share.share({ message: `${title}\n\n${content.replace(/<[^>]*>?/gm, '')}` })} icon={<Type size={20} color="#FFF" />} />
+                  <PanelItem label="Déplacer vers dossier" onPress={() => setShowPanel('folder')} icon={<Folder size={20} color="#FFF" />} />
+                  <PanelItem label={isArchived ? "Désarchiver" : "Archiver"} onPress={() => { setIsArchived(!isArchived); setShowPanel('none'); }} icon={<Archive size={20} color="#FFF" />} />
+                  <PanelItem label="Supprimer" onPress={deleteNote} icon={<Trash2 size={20} color="#FF453A" />} />
+                </View>
+              )}
+
+              {showPanel === 'folder' && (
+                <ScrollView style={{ maxHeight: 200 }}>
+                  <PanelItem label="Aucun dossier" onPress={() => { setFolderId(null); setShowPanel('none'); }} icon={folderId === null ? <Check size={18} color="#007AFF" /> : undefined} />
+                  {folders.map(f => (
+                    <PanelItem key={f.id} label={f.name} onPress={() => { setFolderId(f.id); setShowPanel('none'); }} icon={folderId === f.id ? <Check size={18} color="#007AFF" /> : undefined} />
+                  ))}
+                </ScrollView>
               )}
             </View>
           </View>
         )}
       </KeyboardAvoidingView>
-
-
-
-      <Modal visible={labelModalOpen} transparent animationType="fade" onRequestClose={() => setLabelModalOpen(false)}>
-        <View style={styles.panelOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setLabelModalOpen(false)} />
-          <View style={styles.labelModal}>
-            <Text style={styles.panelText}>Nouveau libellé</Text>
-            <TextInput
-              value={newLabelName}
-              onChangeText={setNewLabelName}
-              placeholder="Ex: Travail"
-              placeholderTextColor="#9CA3AF"
-              style={styles.labelInput}
-            />
-            <TouchableOpacity style={styles.labelConfirmBtn} onPress={confirmAddLabel}>
-              <Text style={styles.labelConfirmText}>Ajouter</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <AIChatOverlay
         isVisible={isAIChatVisible}
@@ -531,18 +381,17 @@ export default function EditorScreen() {
         isTyping={isAITyping}
         messages={aiMessages}
         onSendMessage={async (msg) => {
-          setAiMessages((p) => [...p, { role: 'user', content: msg }]);
+          setAiMessages(p => [...p, { role: 'user', content: msg }]);
           setIsAITyping(true);
           try {
             const res = await getAIResponse(content, msg);
-            if (!res) {
-              setAiMessages((p) => [...p, { role: 'ai', content: "L'IA n'est pas disponible: vérifie EXPO_PUBLIC_GEMINI_API_KEY/EXPO_PUBLIC_GOOGLE_API_KEY et la connexion internet." }]);
-              return;
+            if (res) {
+              setAiMessages(p => [...p, { role: 'ai', content: res.explanation }]);
+              if (res.newContent) {
+                setContent(res.newContent);
+                richText.current?.setContentHTML(res.newContent);
+              }
             }
-            setAiMessages((p) => [...p, { role: 'ai', content: res.explanation }]);
-            setContent(res.newContent || content);
-          } catch (e: any) {
-            setAiMessages((p) => [...p, { role: 'ai', content: `Erreur IA: ${e?.message || 'service indisponible'}` }]);
           } finally {
             setIsAITyping(false);
           }
@@ -552,99 +401,50 @@ export default function EditorScreen() {
   );
 }
 
-function PanelItem({ label, onPress, icon }: { label: string; onPress: () => void; icon?: React.ReactNode }) {
+function PanelItem({ label, onPress, icon }: { label: string, onPress: () => void, icon?: any }) {
   return (
     <TouchableOpacity style={styles.panelItem} onPress={onPress}>
-      <View style={{ width: 24 }}>{icon}</View>
-      <Text style={styles.panelText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function PanelMini({ label, onPress, active = false }: { label: string; onPress: () => void; active?: boolean }) {
-  return (
-    <TouchableOpacity style={[styles.miniBtn, active && styles.miniBtnActive]} onPress={onPress}>
-      <Text style={{ color: '#F9FAFB', fontWeight: '700' }}>{label}</Text>
+      <View style={{ width: 32 }}>{icon}</View>
+      <Text style={styles.panelItemText}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  bottomWrapKeyboard: { paddingHorizontal: 0 },
-  bottomBarKeyboard: { borderRadius: 0, height: 50, borderWidth: 0, borderTopWidth: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  editorTop: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
-  topBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(148,163,184,0.24)',
-  },
-  title: { fontSize: 44, fontWeight: '700', marginBottom: 8, letterSpacing: -0.4, paddingHorizontal: 2 },
-  labelChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  labelChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(148,163,184,0.25)' },
-  labelChipText: { color: '#F3F4F6', fontSize: 12, fontWeight: '600' },
-  noteImage: { width: 150, height: 95, borderRadius: 12, marginRight: 8 },
-  content: { minHeight: 460, fontSize: 16.5, lineHeight: 25, paddingHorizontal: 2, paddingTop: 8 },
-  markdownContainer: { minHeight: 460, paddingTop: 8 },
-  bottomWrap: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 16 },
-  bottomBar: {
-    height: 70,
-    borderRadius: 22,
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, height: 60 },
+  iconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  titleInput: { fontSize: 32, fontWeight: '800', color: '#FFF', letterSpacing: -1, marginBottom: 12, marginTop: 10 },
+  richEditor: { flex: 1, minHeight: 400 },
+  richBar: { backgroundColor: 'transparent', borderTopWidth: 0, borderBottomWidth: 0 },
+  labelScroll: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  labelChip: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  labelChipText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
+  panelOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  panel: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24 },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  panelTitle: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'center' },
+  colorDot: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  inputRow: { flexDirection: 'row', gap: 12 },
+  panelInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14, color: '#FFF', fontSize: 16 },
+  addBtn: { backgroundColor: '#007AFF', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
+  labelList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  labelChoice: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#3B445B',
-  },
-  iconBtn: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  panelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
-  panel: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: '#0B1220',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  panelItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11 },
-  panelText: { color: '#F9FAFB', fontSize: 17 },
-  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
-  colorDot: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
-  textRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: 8 },
-  miniBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' },
-  miniBtnActive: { backgroundColor: '#2563EB' },
-  labelModal: {
-    marginHorizontal: 16,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    gap: 10,
-    backgroundColor: '#0B1220',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  labelInput: {
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    color: '#F9FAFB',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  labelConfirmBtn: {
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    backgroundColor: '#AFC8FF',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     paddingHorizontal: 12,
     paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  labelConfirmText: { color: '#132039', fontWeight: '700' },
+  labelChoiceActive: { backgroundColor: 'rgba(0,122,255,0.2)', borderColor: '#007AFF' },
+  labelChoiceText: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '500' },
+  labelChoiceTextActive: { color: '#FFF', fontWeight: '700' },
+  panelItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  panelItemText: { color: '#FFF', fontSize: 17, fontWeight: '500' },
 });

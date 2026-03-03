@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Pin } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 
 interface NoteCardProps {
   id: string;
@@ -18,56 +19,137 @@ interface NoteCardProps {
 
 export default function NoteCard({ id, title, content, updated_at, color, pinned, labels, onPress, onLongPress, isDragging }: NoteCardProps) {
   const router = useRouter();
-  const isLight = !color || color === '#FFFFFF' || color === '#F2F2F7';
-  const textColor = isLight ? '#111827' : '#F8FAFC';
+
+  // Apple premium theme: often uses slightly translucent cards or very dark ones
+  // For "True Black" theme, we use #121212 or similar for cards to pop from #000000 background
+  const isDefaultColor = !color || color === '#0F172A' || color === '#0B1020';
+  const cardBackground = isDefaultColor ? 'rgba(28, 28, 30, 0.7)' : color;
+  const textColor = '#F8FAFC'; // Always light text for dark theme
 
   return (
     <TouchableOpacity
-      activeOpacity={0.86}
+      activeOpacity={0.7}
       style={[
-        styles.card,
+        styles.cardContainer,
         {
-          backgroundColor: color || '#FFFFFF',
-          borderColor: isDragging ? '#8CB2FF' : isLight ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.18)',
-          transform: [{ scale: isDragging ? 0.985 : 1 }],
+          transform: [{ scale: isDragging ? 1.05 : 1 }],
+          zIndex: isDragging ? 100 : 1,
         },
       ]}
       onPress={onPress || (() => router.push(`/editor/${id}`))}
       onLongPress={onLongPress}
-      delayLongPress={220}
+      delayLongPress={200}
     >
-      <View style={styles.rowTop}>
-        {title ? <Text style={[styles.title, { color: textColor }]} numberOfLines={3}>{title}</Text> : <Text style={[styles.emptyTitle, { color: textColor }]}>Note rapide</Text>}
-        {pinned ? <Pin size={14} color={textColor} /> : null}
-      </View>
+      <BlurView intensity={isDefaultColor ? 40 : 0} tint="dark" style={[
+        styles.card,
+        {
+          backgroundColor: cardBackground,
+          borderColor: isDragging ? '#007AFF' : 'rgba(255,255,255,0.1)',
+          borderWidth: isDragging ? 2 : 1,
+        }
+      ]}>
+        <View style={styles.rowTop}>
+          {title ? (
+            <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
+              {title}
+            </Text>
+          ) : (
+            <Text style={[styles.emptyTitle, { color: 'rgba(255,255,255,0.4)' }]}>
+              Sans titre
+            </Text>
+          )}
+          {pinned && <Pin size={14} color="#007AFF" fill="#007AFF" />}
+        </View>
 
-      <Text style={[styles.content, { color: textColor }]} numberOfLines={8}>
-        {content || 'Aucun contenu'}
-      </Text>
+        <Text style={[styles.content, { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={10}>
+          {content || 'Aucun contenu supplémentaire'}
+        </Text>
 
-      {!!labels?.length && <Text style={[styles.labels, { color: textColor }]}>#{labels.join(' #')}</Text>}
-      <Text style={[styles.date, { color: textColor }]}>{new Date(updated_at).toLocaleDateString()}</Text>
+        <View style={styles.footer}>
+          {!!labels?.length && (
+            <View style={styles.labelContainer}>
+              {labels.slice(0, 2).map((label, idx) => (
+                <View key={idx} style={styles.labelBadge}>
+                  <Text style={styles.labelText}>#{label}</Text>
+                </View>
+              ))}
+              {labels.length > 2 && <Text style={styles.moreLabels}>+{labels.length - 2}</Text>}
+            </View>
+          )}
+          <Text style={styles.date}>
+            {new Date(updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+          </Text>
+        </View>
+      </BlurView>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 18,
-    padding: 14,
+  cardContainer: {
     marginBottom: 12,
-    borderWidth: 1,
-    minHeight: 148,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 24,
+    overflow: 'hidden',
   },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  title: { fontSize: 16, fontWeight: '700', flex: 1, marginRight: 8 },
-  emptyTitle: { fontSize: 15, opacity: 0.6, fontWeight: '600', flex: 1 },
-  content: { fontSize: 15, lineHeight: 22 },
-  labels: { marginTop: 8, fontSize: 12.5, opacity: 0.9 },
-  date: { fontSize: 12, marginTop: 10, opacity: 0.72 },
+  card: {
+    borderRadius: 24,
+    padding: 16,
+    minHeight: 100,
+  },
+  rowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+    letterSpacing: -0.3,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    flex: 1,
+    fontStyle: 'italic',
+  },
+  content: {
+    fontSize: 15,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 'auto',
+  },
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  labelBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  labelText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  moreLabels: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 11,
+  },
+  date: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
+    fontWeight: '500',
+  },
 });

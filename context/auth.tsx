@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, isRememberMeEnabled } from '../lib/supabase';
 
 type AuthContextType = {
   session: Session | null;
@@ -20,13 +20,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session && !isRememberMeEnabled()) {
+        // If session exists but remember me is disabled, sign out
+        supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // If user just signed in, we don't sign them out immediately
+      // The "Remember Me" logic applies mostly to app restart (getSession)
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);

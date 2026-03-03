@@ -1,11 +1,23 @@
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
+import { mmkvStorage } from './storage';
 
 const CHUNK_SIZE = 1900;
 const CHUNK_META_SUFFIX = '__chunk_count';
 
+// We'll use MMKV for the "Remember Me" preference as it's fast
+export const isRememberMeEnabled = () => {
+  return mmkvStorage.getItem('remember_me') !== 'false';
+};
+
+export const setRememberMePreference = (enabled: boolean) => {
+  mmkvStorage.setItem('remember_me', enabled ? 'true' : 'false');
+};
+
 const ExpoSecureStoreAdapter = {
   getItem: async (key: string) => {
+    // If it's an auth token and remember me is disabled, we might want to handle it
+    // But Supabase handles the session. We'll control persistence via the client config.
     const chunkCountRaw = await SecureStore.getItemAsync(`${key}${CHUNK_META_SUFFIX}`);
 
     if (!chunkCountRaw) {
@@ -28,11 +40,6 @@ const ExpoSecureStoreAdapter = {
     return chunks.join('');
   },
   setItem: async (key: string, value: string) => {
-    const legacyValue = await SecureStore.getItemAsync(key);
-    if (legacyValue != null) {
-      await SecureStore.deleteItemAsync(key);
-    }
-
     const totalChunks = Math.ceil(value.length / CHUNK_SIZE);
 
     await Promise.all(
@@ -66,7 +73,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: ExpoSecureStoreAdapter as any,
     autoRefreshToken: true,
-    persistSession: true,
+    persistSession: true, // We always persist to the adapter, but the adapter can be cleared
     detectSessionInUrl: false,
   },
 });
