@@ -13,7 +13,7 @@ export default function Signup() {
 
   async function signUpWithEmail() {
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: email,
       password: password,
       options: {
@@ -41,7 +41,7 @@ export default function Signup() {
           <View style={styles.logoContainer}>
             <UserPlus size={48} color="#34C759" />
           </View>
-          <Text style={styles.title}>Rejoignez-nous</Text>
+          <Text style={styles.title}>Rejoignez Nora AI</Text>
           <Text style={styles.subtitle}>Commencez à prendre des notes intelligentes.</Text>
         </View>
 
@@ -50,6 +50,7 @@ export default function Signup() {
             <TextInput
               style={styles.input}
               placeholder="Nom complet"
+              placeholderTextColor="#9CA3AF"
               value={fullName}
               onChangeText={setFullName}
             />
@@ -58,6 +59,7 @@ export default function Signup() {
             <TextInput
               style={styles.input}
               placeholder="Email"
+              placeholderTextColor="#9CA3AF"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -68,6 +70,7 @@ export default function Signup() {
             <TextInput
               style={styles.input}
               placeholder="Mot de passe"
+              placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -99,74 +102,69 @@ export default function Signup() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#0C101A',
   },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: 24,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 48,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    width: 90,
+    height: 90,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     marginBottom: 20,
   },
   title: {
     fontSize: 34,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 17,
-    color: '#8E8E93',
+    color: '#9CA3AF',
     marginTop: 8,
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
   form: {
     width: '100%',
   },
   inputContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     paddingHorizontal: 16,
-    height: 56,
+    height: 60,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   input: {
     fontSize: 17,
-    color: '#1C1C1E',
+    color: '#FFFFFF',
   },
   button: {
     backgroundColor: '#34C759',
-    borderRadius: 16,
-    height: 56,
+    borderRadius: 18,
+    height: 58,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 8,
     shadowColor: '#34C759',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 4,
   },
   buttonDisabled: {
@@ -174,16 +172,16 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '600',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 24,
+    marginTop: 32,
   },
   footerText: {
-    color: '#8E8E93',
+    color: '#9CA3AF',
     fontSize: 15,
   },
   linkText: {

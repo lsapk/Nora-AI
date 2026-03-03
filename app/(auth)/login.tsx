@@ -1,25 +1,32 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, TextInput, TouchableOpacity, Text, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { supabase, setRememberMePreference } from '../../lib/supabase';
 import { Link, useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
-import { LogIn } from 'lucide-react-native';
+import { LogIn, CheckSquare, Square } from 'lucide-react-native';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   async function signInWithEmail() {
     setLoading(true);
+
+    // Set the preference before signing in
+    setRememberMePreference(rememberMe);
+
     const { error } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
 
-    if (error) Alert.alert(error.message);
-    else router.replace('/(tabs)');
+    if (error) {
+      Alert.alert('Erreur de connexion', error.message);
+    } else {
+      router.replace('/(tabs)');
+    }
     setLoading(false);
   }
 
@@ -31,9 +38,9 @@ export default function Login() {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <LogIn size={48} color="#007AFF" />
+            <LogIn size={42} color="#007AFF" />
           </View>
-          <Text style={styles.title}>Notes IA</Text>
+          <Text style={styles.title}>Nora AI</Text>
           <Text style={styles.subtitle}>Votre second cerveau, augmenté par l'IA.</Text>
         </View>
 
@@ -42,6 +49,7 @@ export default function Login() {
             <TextInput
               style={styles.input}
               placeholder="Email"
+              placeholderTextColor="rgba(255,255,255,0.3)"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -52,11 +60,25 @@ export default function Login() {
             <TextInput
               style={styles.input}
               placeholder="Mot de passe"
+              placeholderTextColor="rgba(255,255,255,0.3)"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
             />
           </View>
+
+          <TouchableOpacity
+            style={styles.rememberMeContainer}
+            onPress={() => setRememberMe(!rememberMe)}
+            activeOpacity={0.7}
+          >
+            {rememberMe ? (
+              <CheckSquare size={20} color="#007AFF" />
+            ) : (
+              <Square size={20} color="rgba(255,255,255,0.3)" />
+            )}
+            <Text style={styles.rememberMeText}>Se souvenir de moi</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -67,7 +89,7 @@ export default function Login() {
           </TouchableOpacity>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Vous n'avez pas de compte ? </Text>
+            <Text style={styles.footerText}>Pas de compte ? </Text>
             <Link href="/signup" asChild>
               <TouchableOpacity>
                 <Text style={styles.linkText}>S'inscrire</Text>
@@ -81,98 +103,51 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  scrollContainer: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  header: { alignItems: 'center', marginBottom: 48 },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    width: 84,
+    height: 84,
+    borderRadius: 22,
+    backgroundColor: '#1C1C1E',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 17,
-    color: '#8E8E93',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  form: {
-    width: '100%',
-  },
+  title: { fontSize: 34, fontWeight: '800', color: '#FFF', letterSpacing: -1 },
+  subtitle: { fontSize: 17, color: 'rgba(255,255,255,0.5)', marginTop: 8, textAlign: 'center' },
+  form: { width: '100%' },
   inputContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1C1C1E',
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     paddingHorizontal: 16,
-    height: 56,
+    height: 60,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  input: {
-    fontSize: 17,
-    color: '#1C1C1E',
-  },
+  input: { fontSize: 17, color: '#FFF' },
+  rememberMeContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 28, gap: 10, paddingLeft: 4 },
+  rememberMeText: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '500' },
   button: {
     backgroundColor: '#007AFF',
-    borderRadius: 16,
-    height: 56,
+    borderRadius: 18,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
     shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 4,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  footerText: {
-    color: '#8E8E93',
-    fontSize: 15,
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
+  footerText: { color: 'rgba(255,255,255,0.5)', fontSize: 15 },
+  linkText: { color: '#007AFF', fontSize: 15, fontWeight: '700' },
 });

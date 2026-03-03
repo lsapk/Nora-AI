@@ -1,87 +1,109 @@
-import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, useColorScheme, ScrollView, Alert, Linking, Share } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert, Linking, TextInput } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
-import { LogOut, User, Shield, FileText, Download, HelpCircle, ChevronRight } from 'lucide-react-native';
+import { LogOut, Shield, FileText, HelpCircle, ChevronRight, Lock, Mail } from 'lucide-react-native';
 
 export default function SettingsScreen() {
   const { user } = useAuth();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const [newPassword, setNewPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
 
-  const exportData = async () => {
-    try {
-      const { data, error } = await supabase.from('notes').select('*').eq('user_id', user?.id);
-      if (error) throw error;
-      const json = JSON.stringify(data, null, 2);
-      await Share.share({
-        message: json,
-        title: 'Export de mes données Nora AI',
-      });
-    } catch (e: any) {
-      Alert.alert('Erreur', e.message);
+  const updatePassword = async () => {
+    if (!newPassword) return;
+    setIsUpdating(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setIsUpdating(false);
+    if (error) Alert.alert('Erreur', error.message);
+    else {
+      Alert.alert('Succès', 'Mot de passe mis à jour.');
+      setNewPassword('');
+    }
+  };
+
+  const updateEmail = async () => {
+    if (!newEmail) return;
+    setIsUpdating(true);
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    setIsUpdating(false);
+    if (error) Alert.alert('Erreur', error.message);
+    else {
+      Alert.alert('Succès', 'Un email de confirmation a été envoyé à la nouvelle adresse.');
+      setNewEmail('');
     }
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDark ? '#0C101A' : '#F2F2F7' }]}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDark ? '#FFFFFF' : '#000000' }]}>Paramètres</Text>
+        <Text style={styles.title}>Paramètres</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>COMPTE</Text>
-      <View style={[styles.section, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+      <Text style={styles.sectionTitle}>PROFIL</Text>
+      <View style={styles.section}>
         <View style={styles.row}>
-          <User size={22} color="#AFC8FF" />
+          <Mail size={20} color="#007AFF" />
           <View style={styles.rowContent}>
-            <Text style={[styles.rowLabel, { color: isDark ? '#FFFFFF' : '#000000' }]}>Email</Text>
-            <Text style={styles.rowValue}>{user?.email}</Text>
+            <TextInput
+              placeholder="Changer d'email"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={newEmail}
+              onChangeText={setNewEmail}
+              autoCapitalize="none"
+              style={styles.input}
+            />
+            <Text style={styles.currentVal}>{user?.email}</Text>
           </View>
+          <TouchableOpacity style={[styles.updateBtn, !newEmail && styles.disabled]} onPress={updateEmail} disabled={!newEmail || isUpdating}>
+            <Text style={styles.updateBtnText}>MAJ</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.separator} />
+        <View style={styles.row}>
+          <Lock size={20} color="#007AFF" />
+          <View style={styles.rowContent}>
+            <TextInput
+              secureTextEntry
+              placeholder="Nouveau mot de passe"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              style={styles.input}
+            />
+          </View>
+          <TouchableOpacity style={[styles.updateBtn, !newPassword && styles.disabled]} onPress={updatePassword} disabled={!newPassword || isUpdating}>
+            <Text style={styles.updateBtnText}>MAJ</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>LÉGAL</Text>
-      <View style={[styles.section, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+      <Text style={styles.sectionTitle}>SUPPORT & LÉGAL</Text>
+      <View style={styles.section}>
+        <TouchableOpacity style={styles.row} onPress={() => Alert.alert('Aide', 'Contactez-nous à support@nora-ai.com')}>
+          <HelpCircle size={20} color="#007AFF" />
+          <Text style={styles.rowLabelFull}>Centre d'aide</Text>
+          <ChevronRight size={18} color="rgba(255,255,255,0.3)" />
+        </TouchableOpacity>
+        <View style={styles.separator} />
         <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://example.com/cgu')}>
-          <FileText size={22} color="#AFC8FF" />
-          <Text style={[styles.rowLabel, { color: isDark ? '#FFFFFF' : '#000000', marginLeft: 15, flex: 1 }]}>Conditions Générales d'Utilisation</Text>
-          <ChevronRight size={18} color="#8E8E93" />
+          <FileText size={20} color="#007AFF" />
+          <Text style={styles.rowLabelFull}>Conditions d'Utilisation</Text>
+          <ChevronRight size={18} color="rgba(255,255,255,0.3)" />
         </TouchableOpacity>
         <View style={styles.separator} />
         <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://example.com/rgpd')}>
-          <Shield size={22} color="#AFC8FF" />
-          <Text style={[styles.rowLabel, { color: isDark ? '#FFFFFF' : '#000000', marginLeft: 15, flex: 1 }]}>Politique de Confidentialité</Text>
-          <ChevronRight size={18} color="#8E8E93" />
+          <Shield size={20} color="#007AFF" />
+          <Text style={styles.rowLabelFull}>Confidentialité (RGPD)</Text>
+          <ChevronRight size={18} color="rgba(255,255,255,0.3)" />
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>PORTABILITÉ</Text>
-      <View style={[styles.section, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-        <TouchableOpacity style={styles.row} onPress={exportData}>
-          <Download size={22} color="#AFC8FF" />
-          <Text style={[styles.rowLabel, { color: isDark ? '#FFFFFF' : '#000000', marginLeft: 15, flex: 1 }]}>Exporter mes données</Text>
-          <ChevronRight size={18} color="#8E8E93" />
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.sectionTitle}>SUPPORT</Text>
-      <View style={[styles.section, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
-        <TouchableOpacity style={styles.row} onPress={() => Alert.alert('Aide', 'Contactez le support à support@nora-ai.com')}>
-          <HelpCircle size={22} color="#AFC8FF" />
-          <Text style={[styles.rowLabel, { color: isDark ? '#FFFFFF' : '#000000', marginLeft: 15, flex: 1 }]}>Aide</Text>
-          <ChevronRight size={18} color="#8E8E93" />
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.logoutButton, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', marginTop: 10, marginBottom: 40 }]}
-        onPress={handleLogout}
-      >
-        <LogOut size={22} color="#FF3B30" />
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutText}>Se déconnecter</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -89,65 +111,20 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-  },
-  section: {
-    marginHorizontal: 16,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#8E8E93',
-    marginLeft: 28,
-    marginBottom: 8,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: 'rgba(142, 142, 147, 0.2)',
-    marginVertical: 12,
-    marginLeft: 37,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rowContent: {
-    marginLeft: 15,
-  },
-  rowLabel: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  rowValue: {
-    fontSize: 15,
-    color: '#8E8E93',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-    borderRadius: 12,
-    padding: 16,
-  },
-  logoutText: {
-    color: '#FF3B30',
-    fontSize: 17,
-    fontWeight: '600',
-    marginLeft: 10,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 24 },
+  title: { fontSize: 34, fontWeight: '800', color: '#FFF', letterSpacing: -1 },
+  section: { marginHorizontal: 16, borderRadius: 20, paddingHorizontal: 16, marginBottom: 24, backgroundColor: '#1C1C1E' },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.4)', marginLeft: 32, marginBottom: 8, textTransform: 'uppercase' },
+  separator: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 36 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  rowContent: { marginLeft: 16, flex: 1 },
+  currentVal: { fontSize: 12, color: 'rgba(255,255,255,0.3)', marginTop: 2 },
+  input: { fontSize: 16, color: '#FFF', padding: 0 },
+  rowLabelFull: { fontSize: 17, color: '#FFF', marginLeft: 16, flex: 1 },
+  updateBtn: { backgroundColor: '#007AFF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  updateBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  disabled: { opacity: 0.3 },
+  logoutButton: { marginHorizontal: 16, borderRadius: 20, padding: 18, backgroundColor: '#1C1C1E', alignItems: 'center', marginTop: 8, marginBottom: 40 },
+  logoutText: { color: '#FF453A', fontSize: 17, fontWeight: '700' },
 });
