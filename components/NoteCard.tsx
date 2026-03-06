@@ -20,11 +20,9 @@ interface NoteCardProps {
 export default function NoteCard({ id, title, content, updated_at, color, pinned, labels, onPress, onLongPress, isDragging }: NoteCardProps) {
   const router = useRouter();
 
-  // Apple premium theme: often uses slightly translucent cards or very dark ones
-  // For "True Black" theme, we use #121212 or similar for cards to pop from #000000 background
-  const isDefaultColor = !color || color === '#0F172A' || color === '#0B1020';
-  const cardBackground = isDefaultColor ? 'rgba(28, 28, 30, 0.7)' : color;
-  const textColor = '#F8FAFC'; // Always light text for dark theme
+  const isDefaultColor = !color || color === '#0F172A' || color === '#0B1020' || color === '#000000';
+  const cardBackground = isDefaultColor ? '#1C1C1E' : color;
+  const textColor = '#FFF';
 
   return (
     <TouchableOpacity
@@ -40,12 +38,12 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
       onLongPress={onLongPress}
       delayLongPress={200}
     >
-      <BlurView intensity={isDefaultColor ? 40 : 0} tint="dark" style={[
+      <View style={[
         styles.card,
         {
           backgroundColor: cardBackground,
           borderColor: isDragging ? '#007AFF' : 'rgba(255,255,255,0.1)',
-          borderWidth: isDragging ? 2 : 1,
+          borderWidth: 1,
         }
       ]}>
         <View style={styles.rowTop}>
@@ -88,13 +86,13 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
 const styles = StyleSheet.create({
   cardContainer: {
     marginBottom: 12,
-    borderRadius: 24,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   card: {
-    borderRadius: 24,
-    padding: 16,
-    minHeight: 100,
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 60,
   },
   rowTop: {
     flexDirection: 'row',
@@ -103,22 +101,21 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
     marginRight: 8,
-    letterSpacing: -0.3,
   },
   emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '500',
     flex: 1,
     fontStyle: 'italic',
   },
   content: {
-    fontSize: 15,
-    lineHeight: 20,
-    marginBottom: 12,
+    fontSize: 14,
+    lineHeight: 18,
+    marginBottom: 8,
   },
   footer: {
     flexDirection: 'row',
