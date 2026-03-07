@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   Alert,
   Modal,
@@ -14,14 +14,12 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Search, Plus, Archive, Settings, StickyNote, LogOut, Tag, Folder, Trash2 } from 'lucide-react-native';
+import { Menu, Search, Plus, Archive, Settings, StickyNote, LogOut, Tag, Trash2, ArrowLeft, Check } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
-import { useFolders } from '../../context/folder';
 import NoteCard from '../../components/NoteCard';
 
 const { width } = Dimensions.get('window');
@@ -35,25 +33,21 @@ type NoteRow = {
   pinned?: boolean;
   labels?: string[];
   order_index?: number;
-  folder_id?: string;
   archived?: boolean;
 };
 
 export default function NotesScreen() {
   const { user } = useAuth();
-  const { folders, createFolder, deleteFolder } = useFolders();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  const [folderModalOpen, setFolderModalOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
   const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
 
   if (UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -71,7 +65,7 @@ export default function NotesScreen() {
   });
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       refetch();
     }, [refetch])
   );
@@ -88,9 +82,6 @@ export default function NotesScreen() {
       if (selectedLabel) {
         filtered = filtered.filter((note) => (note.labels || []).some((label) => label.toLowerCase() === selectedLabel.toLowerCase()));
       }
-      if (selectedFolderId) {
-        filtered = filtered.filter((note) => note.folder_id === selectedFolderId);
-      }
       if (search.trim()) {
         const q = search.toLowerCase();
         filtered = filtered.filter((note) =>
@@ -99,15 +90,19 @@ export default function NotesScreen() {
       }
       return filtered;
     },
-    [notes, selectedLabel, selectedFolderId, search]
+    [notes, selectedLabel, search]
   );
 
-  const persistOrder = async (orderedIds: string[]) => {
-    if (search || selectedLabel || selectedFolderId) return;
-    const updates = orderedIds.map((id, index) => ({ id, user_id: user?.id, order_index: index }));
-    await supabase.from('notes').upsert(updates as any, { onConflict: 'id' });
-    refetch();
-  };
+  // Simple Masonry implementation using two columns
+  const masonryData = useMemo(() => {
+    const leftCol: NoteRow[] = [];
+    const rightCol: NoteRow[] = [];
+    filteredNotes.forEach((note, index) => {
+      if (index % 2 === 0) leftCol.push(note);
+      else rightCol.push(note);
+    });
+    return { leftCol, rightCol };
+  }, [filteredNotes]);
 
   const createNote = async () => {
     const { data } = await supabase
@@ -117,7 +112,6 @@ export default function NotesScreen() {
         content: '',
         note_color: '#000000',
         labels: selectedLabel ? [selectedLabel] : [],
-        folder_id: selectedFolderId,
         order_index: notes.length > 0 ? Math.min(...notes.map((n: any) => n.order_index ?? 0)) - 1 : 0
       } as any)
       .select()
@@ -125,11 +119,39 @@ export default function NotesScreen() {
     if (data?.id) router.push(`/editor/${data.id}`);
   };
 
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return;
-    await createFolder(newFolderName.trim());
-    setNewFolderName('');
-    setFolderModalOpen(false);
+  const handleCreateLabel = async () => {
+    if (!newLabelName.trim()) return;
+    const { error } = await supabase.from('notes').insert({
+        user_id: user?.id,
+        content: '',
+        title: '',
+        labels: [newLabelName.trim()],
+        archived: true,
+        note_color: '#000000'
+    });
+    if (error) Alert.alert('Erreur', error.message);
+    setNewLabelName('');
+    refetch();
+  };
+
+  const handleDeleteLabel = async (label: string) => {
+    Alert.alert('Supprimer le libellé', `Voulez-vous supprimer le libellé "${label}" de toutes les notes ?`, [
+        { text: 'Annuler', style: 'cancel' },
+        {
+            text: 'Supprimer',
+            style: 'destructive',
+            onPress: async () => {
+                const { data } = await supabase.from('notes').select('id, labels').contains('labels', [label]);
+                if (data) {
+                    for (const n of data) {
+                        const newLabels = (n.labels as string[]).filter(l => l !== label);
+                        await supabase.from('notes').update({ labels: newLabels }).eq('id', n.id);
+                    }
+                }
+                refetch();
+            }
+        }
+    ]);
   };
 
   return (
@@ -146,19 +168,18 @@ export default function NotesScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>
-          {showArchived ? 'Archives' : (selectedLabel || (selectedFolderId ? folders.find(f => f.id === selectedFolderId)?.name : 'Mes Notes'))}
+          {showArchived ? 'Archives' : (selectedLabel || 'Mes Notes')}
         </Text>
 
-        <DraggableFlatList
-          data={filteredNotes}
-          keyExtractor={(item) => item.id}
-          onDragEnd={({ data }) => persistOrder(data.map(n => n.id))}
-          numColumns={2}
-          columnWrapperStyle={styles.columnWrapper}
-          renderItem={({ item, drag, isActive }: RenderItemParams<NoteRow>) => (
-            <ScaleDecorator>
-              <View style={[styles.cardWrapper, isActive && { zIndex: 100 }]}>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 8, paddingBottom: insets.bottom + 112 }}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
+        >
+          <View style={styles.masonryContainer}>
+            <View style={styles.column}>
+              {masonryData.leftCol.map(item => (
                 <NoteCard
+                  key={item.id}
                   id={item.id}
                   title={item.title}
                   content={(item.content || '').replace(/<[^>]*>?/gm, '')}
@@ -166,17 +187,28 @@ export default function NotesScreen() {
                   color={item.note_color}
                   pinned={item.pinned}
                   labels={item.labels}
-                  isDragging={isActive}
-                  onLongPress={drag}
                   onPress={() => router.push(`/editor/${item.id}`)}
                 />
-              </View>
-            </ScaleDecorator>
-          )}
-          contentContainerStyle={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: insets.bottom + 112 }}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
-          ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>Aucune note</Text> : null}
-        />
+              ))}
+            </View>
+            <View style={styles.column}>
+              {masonryData.rightCol.map(item => (
+                <NoteCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  content={(item.content || '').replace(/<[^>]*>?/gm, '')}
+                  updated_at={item.updated_at}
+                  color={item.note_color}
+                  pinned={item.pinned}
+                  labels={item.labels}
+                  onPress={() => router.push(`/editor/${item.id}`)}
+                />
+              ))}
+            </View>
+          </View>
+          {filteredNotes.length === 0 && !isLoading && <Text style={styles.emptyText}>Aucune note</Text>}
+        </ScrollView>
 
         {!showArchived && (
           <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={createNote}>
@@ -189,36 +221,14 @@ export default function NotesScreen() {
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
             <View style={[styles.drawer, { paddingTop: insets.top + 20 }]}>
               <View style={styles.drawerHeader}><Text style={styles.drawerTitle}>Nora AI</Text><Text style={styles.drawerSubtitle}>{user?.email}</Text></View>
-              <DrawerItem icon={<StickyNote size={20} color="#E5E7EB" />} label="Toutes les notes" active={!selectedLabel && !selectedFolderId && !showArchived} onPress={() => { setSelectedLabel(null); setSelectedFolderId(null); setShowArchived(false); setDrawerOpen(false); }} />
-              <View style={styles.drawerDivider} />
-              <View style={styles.drawerSectionHeader}><Text style={styles.drawerSectionLabel}>Dossiers</Text><TouchableOpacity onPress={() => { setDrawerOpen(false); setFolderModalOpen(true); }}><Plus size={16} color="#007AFF" /></TouchableOpacity></View>
-              {folders.map(folder => <DrawerItem key={folder.id} icon={<Folder size={18} color="#E5E7EB" />} label={folder.name} active={selectedFolderId === folder.id} onPress={() => { setSelectedFolderId(folder.id); setSelectedLabel(null); setShowArchived(false); setDrawerOpen(false); }} />)}
+              <DrawerItem icon={<StickyNote size={20} color="#E5E7EB" />} label="Toutes les notes" active={!selectedLabel && !showArchived} onPress={() => { setSelectedLabel(null); setShowArchived(false); setDrawerOpen(false); }} />
               <View style={styles.drawerDivider} />
               <View style={styles.drawerSectionHeader}><Text style={styles.drawerSectionLabel}>Libellés</Text><TouchableOpacity onPress={() => { setDrawerOpen(false); setLabelModalOpen(true); }}><Settings size={16} color="#007AFF" /></TouchableOpacity></View>
-              {allLabels.map(label => <DrawerItem key={label} icon={<Tag size={18} color="#E5E7EB" />} label={label} active={selectedLabel?.toLowerCase() === label.toLowerCase()} onPress={() => { setSelectedLabel(label); setSelectedFolderId(null); setShowArchived(false); setDrawerOpen(false); }} />)}
+              {allLabels.map(label => <DrawerItem key={label} icon={<Tag size={18} color="#E5E7EB" />} label={label} active={selectedLabel?.toLowerCase() === label.toLowerCase()} onPress={() => { setSelectedLabel(label); setShowArchived(false); setDrawerOpen(false); }} />)}
               <View style={styles.drawerDivider} />
-              <DrawerItem icon={<Archive size={20} color="#E5E7EB" />} label="Archives" active={showArchived} onPress={() => { setShowArchived(true); setSelectedLabel(null); setSelectedFolderId(null); setDrawerOpen(false); }} />
+              <DrawerItem icon={<Archive size={20} color="#E5E7EB" />} label="Archives" active={showArchived} onPress={() => { setShowArchived(true); setSelectedLabel(null); setDrawerOpen(false); }} />
               <DrawerItem icon={<Settings size={20} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
               <DrawerItem icon={<LogOut size={20} color="#FF453A" />} label="Se déconnecter" onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }} />
-            </View>
-          </View>
-        </Modal>
-
-        <Modal visible={folderModalOpen} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setFolderModalOpen(false)} />
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Dossiers</Text>
-              <View style={styles.modalInputRow}>
-                <TextInput placeholder="Nouveau dossier" placeholderTextColor="rgba(255,255,255,0.3)" style={styles.modalInput} value={newFolderName} onChangeText={setNewFolderName} />
-                <TouchableOpacity style={styles.modalAddBtn} onPress={handleCreateFolder}><Plus size={20} color="#FFF" /></TouchableOpacity>
-              </View>
-              {folders.map(f => (
-                <View key={f.id} style={styles.modalRow}>
-                  <Text style={{color: '#FFF'}}>{f.name}</Text>
-                  <TouchableOpacity onPress={() => deleteFolder(f.id)}><Trash2 size={18} color="#FF453A" /></TouchableOpacity>
-                </View>
-              ))}
             </View>
           </View>
         </Modal>
@@ -227,12 +237,43 @@ export default function NotesScreen() {
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setLabelModalOpen(false)} />
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Libellés</Text>
-              {allLabels.map(l => (
-                <View key={l} style={styles.modalRow}>
-                  <Text style={{color: '#FFF'}}>#{l}</Text>
-                </View>
-              ))}
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setLabelModalOpen(false)}>
+                  <ArrowLeft size={24} color="#FFF" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Modifier les libellés</Text>
+              </View>
+
+              <View style={styles.modalInputRow}>
+                <Plus size={20} color="#9CA3AF" />
+                <TextInput
+                  placeholder="Créer un libellé"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  style={styles.modalInput}
+                  value={newLabelName}
+                  onChangeText={setNewLabelName}
+                  onSubmitEditing={handleCreateLabel}
+                />
+                <TouchableOpacity onPress={handleCreateLabel}>
+                  <Check size={20} color="#007AFF" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView>
+                {allLabels.map(l => (
+                  <View key={l} style={styles.modalRow}>
+                    <Tag size={18} color="#9CA3AF" />
+                    <TextInput
+                      style={styles.labelEditInput}
+                      value={l}
+                      editable={false}
+                    />
+                    <TouchableOpacity onPress={() => handleDeleteLabel(l)}>
+                      <Trash2 size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -256,9 +297,9 @@ const styles = StyleSheet.create({
   menuBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C1C1E' },
   searchWrap: { flex: 1, height: 44, borderRadius: 22, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10, backgroundColor: '#1C1C1E' },
   searchInput: { flex: 1, color: '#FFF', fontSize: 16 },
-  sectionTitle: { color: '#FFF', fontSize: 32, fontWeight: '800', marginTop: 24, marginHorizontal: 20, marginBottom: 16, letterSpacing: -1 },
-  columnWrapper: { justifyContent: 'space-between', paddingHorizontal: 6 },
-  cardWrapper: { width: (width - 44) / 2, marginBottom: 12 },
+  sectionTitle: { color: '#FFF', fontSize: 24, fontWeight: '600', marginTop: 24, marginHorizontal: 20, marginBottom: 16 },
+  masonryContainer: { flexDirection: 'row', gap: 8 },
+  column: { flex: 1, gap: 8 },
   emptyText: { color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 100, fontSize: 16 },
   fab: { position: 'absolute', right: 20, width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#FFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
@@ -275,9 +316,11 @@ const styles = StyleSheet.create({
   drawerTextActive: { color: '#007AFF', fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1C1C1E', padding: 24, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: 400 },
-  modalTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 20 },
-  modalInputRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  modalInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14, color: '#FFF' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 24 },
+  modalTitle: { color: '#FFF', fontSize: 22, fontWeight: '600' },
+  modalInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingVertical: 8 },
+  modalInput: { flex: 1, color: '#FFF', fontSize: 16, paddingVertical: 8 },
   modalAddBtn: { backgroundColor: '#007AFF', width: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  modalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  modalRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 12 },
+  labelEditInput: { flex: 1, color: '#FFF', fontSize: 16 },
 });

@@ -40,7 +40,6 @@ import {
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
-import { useFolders } from '../../context/folder';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import AIChatOverlay from '../../components/AIChatOverlay';
 import { getAIResponse } from '../../lib/ai';
@@ -53,17 +52,27 @@ type Note = {
   note_color?: string | null;
   labels?: string[] | null;
   pinned?: boolean | null;
-  folder_id?: string | null;
   archived?: boolean | null;
 };
 
-const NOTE_COLORS = ['#000000', '#1C1C1E', '#2C3E50', '#7E102B', '#14532D', '#7A4B00', '#1E3A8A', '#581C87'];
+const NOTE_COLORS = [
+  '#000000', // Default Black
+  '#77172e', // Dark Red
+  '#692b17', // Dark Orange
+  '#7c5e10', // Dark Yellow
+  '#265d48', // Dark Green
+  '#256377', // Dark Cyan
+  '#1e3a8a', // Dark Blue
+  '#472e5b', // Dark Purple
+  '#6c394f', // Dark Pink
+  '#443126', // Dark Brown
+  '#3c3f43', // Dark Gray
+];
 
 export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const noteId = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
   const { user } = useAuth();
-  const { folders } = useFolders();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const richText = useRef<RichEditor>(null);
@@ -77,10 +86,9 @@ export default function EditorScreen() {
   const [labels, setLabels] = useState<string[]>([]);
   const [allUserLabels, setAllUserLabels] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
-  const [folderId, setFolderId] = useState<string | null>(null);
   const [isArchived, setIsArchived] = useState(false);
 
-  const [showPanel, setShowPanel] = useState<'none' | 'color' | 'more' | 'folder' | 'labels'>('none');
+  const [showPanel, setShowPanel] = useState<'none' | 'color' | 'more' | 'labels' | 'formatting'>('none');
   const [isAIChatVisible, setIsAIChatVisible] = useState(false);
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'ai'; content: string }[]>([]);
   const [isAITyping, setIsAITyping] = useState(false);
@@ -102,12 +110,13 @@ export default function EditorScreen() {
     const noteContent = n.content || '';
     setContent(noteContent);
     // CRITICAL FIX: Set editor content after fetch
-    richText.current?.setContentHTML(noteContent);
+    if (noteContent !== content) {
+      richText.current?.setContentHTML(noteContent);
+    }
 
     setNoteColor(n.note_color || '#000000');
     setLabels(n.labels || []);
     setIsPinned(Boolean(n.pinned));
-    setFolderId(n.folder_id || null);
     setIsArchived(Boolean(n.archived));
     setLoading(false);
   }, [noteId, user?.id]);
@@ -128,7 +137,7 @@ export default function EditorScreen() {
   }, [fetchNote, fetchAllLabels]);
 
   const saveNote = useCallback(
-    async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned, nextFolderId = folderId, nextArchived = isArchived) => {
+    async (nextTitle: string, nextContent: string, nextColor = noteColor, nextLabels = labels, nextPinned = isPinned, nextArchived = isArchived) => {
       if (!noteId || !user?.id) return;
       setIsSaving(true);
 
@@ -138,7 +147,6 @@ export default function EditorScreen() {
         note_color: nextColor,
         labels: nextLabels,
         pinned: nextPinned,
-        folder_id: nextFolderId,
         archived: nextArchived,
         updated_at: new Date().toISOString(),
       } as any;
@@ -153,9 +161,9 @@ export default function EditorScreen() {
 
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => saveNote(title, content, noteColor, labels, isPinned, folderId, isArchived), 1000);
+    const t = setTimeout(() => saveNote(title, content, noteColor, labels, isPinned, isArchived), 1000);
     return () => clearTimeout(t);
-  }, [title, content, noteColor, labels, isPinned, folderId, isArchived, note, saveNote]);
+  }, [title, content, noteColor, labels, isPinned, isArchived, note, saveNote]);
 
   const toggleLabel = (label: string) => {
     if (labels.includes(label)) {
@@ -247,57 +255,46 @@ export default function EditorScreen() {
           <RichEditor
             ref={richText}
             initialContentHTML={content}
-            onChange={setContent}
+            onChange={(html) => {
+              setContent(html);
+            }}
             placeholder="Écrivez quelque chose..."
             editorStyle={{
               backgroundColor: noteColor,
               color: '#FFF',
               placeholderColor: 'rgba(255,255,255,0.2)',
-              contentCSSText: 'font-size: 18px; line-height: 28px;',
+              contentCSSText: 'font-size: 16px; line-height: 24px;',
             }}
             style={styles.richEditor}
             onLoad={() => {
-              // Ensure content is set even if fetch finished before editor mount
               if (content) richText.current?.setContentHTML(content);
             }}
+            useContainer={true}
+            initialHeight={500}
           />
         </ScrollView>
 
-        <RichToolbar
-          editor={richText}
-          actions={[
-            actions.setBold,
-            actions.setItalic,
-            actions.setUnderline,
-            actions.insertBulletsList,
-            actions.insertOrderedList,
-            actions.checkboxList,
-            actions.heading1,
-            actions.heading2,
-            'color',
-            'labels',
-          ]}
-          iconMap={{
-            [actions.setBold]: ({ tintColor }) => <Bold size={20} color={tintColor} />,
-            [actions.setItalic]: ({ tintColor }) => <Italic size={20} color={tintColor} />,
-            [actions.setUnderline]: ({ tintColor }) => <Underline size={20} color={tintColor} />,
-            [actions.insertBulletsList]: ({ tintColor }) => <List size={20} color={tintColor} />,
-            [actions.checkboxList]: ({ tintColor }) => <ListTodo size={20} color={tintColor} />,
-            [actions.heading1]: ({ tintColor }) => <Heading1 size={20} color={tintColor} />,
-            [actions.heading2]: ({ tintColor }) => <Heading2 size={20} color={tintColor} />,
-            color: ({ tintColor }) => <Palette size={20} color={tintColor} />,
-            labels: ({ tintColor }) => <Tag size={20} color={tintColor} />,
-          }}
-          onPressAction={(action) => {
-            if (action === 'color') setShowPanel('color');
-            else if (action === 'labels') setShowPanel('labels');
-          }}
-          selectedButtonStyle={{ backgroundColor: 'transparent' }}
-          unselectedButtonStyle={{ backgroundColor: 'transparent' }}
-          selectedIconTint="#007AFF"
-          iconTint="#FFF"
-          style={styles.richBar}
-        />
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]}>
+          <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('formatting')}>
+            <Plus size={22} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('color')}>
+            <Palette size={22} color="#FFF" />
+          </TouchableOpacity>
+          {!isArchived && (
+            <TouchableOpacity style={styles.barBtn} onPress={archiveNote}>
+              <Archive size={22} color="#FFF" />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }} />
+          <Text style={styles.lastEdit}>
+            Modifié {new Date(note?.updated_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('more')}>
+            <MoreVertical size={22} color="#FFF" />
+          </TouchableOpacity>
+        </View>
 
         {showPanel !== 'none' && (
           <View style={styles.panelOverlay}>
@@ -305,7 +302,7 @@ export default function EditorScreen() {
             <View style={[styles.panel, { paddingBottom: insets.bottom + 20 }]}>
               <View style={styles.panelHeader}>
                 <Text style={styles.panelTitle}>
-                  {showPanel === 'color' ? 'Couleur' : showPanel === 'labels' ? 'Libellés' : showPanel === 'folder' ? 'Dossier' : 'Options'}
+                  {showPanel === 'color' ? 'Couleur' : showPanel === 'labels' ? 'Libellés' : showPanel === 'formatting' ? 'Formatage' : 'Options'}
                 </Text>
                 <TouchableOpacity onPress={() => setShowPanel('none')}>
                   <ChevronDown size={24} color="#FFF" />
@@ -353,22 +350,45 @@ export default function EditorScreen() {
                 </View>
               )}
 
-              {showPanel === 'more' && (
-                <View style={{ gap: 8 }}>
-                  <PanelItem label="Partager la note" onPress={() => Share.share({ message: `${title}\n\n${content.replace(/<[^>]*>?/gm, '')}` })} icon={<Type size={20} color="#FFF" />} />
-                  <PanelItem label="Déplacer vers dossier" onPress={() => setShowPanel('folder')} icon={<Folder size={20} color="#FFF" />} />
-                  <PanelItem label={isArchived ? "Désarchiver" : "Archiver"} onPress={() => { setIsArchived(!isArchived); setShowPanel('none'); }} icon={<Archive size={20} color="#FFF" />} />
-                  <PanelItem label="Supprimer" onPress={deleteNote} icon={<Trash2 size={20} color="#FF453A" />} />
+              {showPanel === 'formatting' && (
+                <View style={styles.formattingContainer}>
+                   <RichToolbar
+                    editor={richText}
+                    actions={[
+                      actions.setBold,
+                      actions.setItalic,
+                      actions.setUnderline,
+                      actions.insertBulletsList,
+                      actions.insertOrderedList,
+                      actions.checkboxList,
+                      actions.heading1,
+                      actions.heading2,
+                    ]}
+                    iconMap={{
+                      [actions.setBold]: ({ tintColor }) => <Bold size={20} color={tintColor} />,
+                      [actions.setItalic]: ({ tintColor }) => <Italic size={20} color={tintColor} />,
+                      [actions.setUnderline]: ({ tintColor }) => <Underline size={20} color={tintColor} />,
+                      [actions.insertBulletsList]: ({ tintColor }) => <List size={20} color={tintColor} />,
+                      [actions.checkboxList]: ({ tintColor }) => <ListTodo size={20} color={tintColor} />,
+                      [actions.heading1]: ({ tintColor }) => <Heading1 size={20} color={tintColor} />,
+                      [actions.heading2]: ({ tintColor }) => <Heading2 size={20} color={tintColor} />,
+                    }}
+                    selectedButtonStyle={{ backgroundColor: 'transparent' }}
+                    unselectedButtonStyle={{ backgroundColor: 'transparent' }}
+                    selectedIconTint="#007AFF"
+                    iconTint="#FFF"
+                    style={styles.richBar}
+                  />
                 </View>
               )}
 
-              {showPanel === 'folder' && (
-                <ScrollView style={{ maxHeight: 200 }}>
-                  <PanelItem label="Aucun dossier" onPress={() => { setFolderId(null); setShowPanel('none'); }} icon={folderId === null ? <Check size={18} color="#007AFF" /> : undefined} />
-                  {folders.map(f => (
-                    <PanelItem key={f.id} label={f.name} onPress={() => { setFolderId(f.id); setShowPanel('none'); }} icon={folderId === f.id ? <Check size={18} color="#007AFF" /> : undefined} />
-                  ))}
-                </ScrollView>
+              {showPanel === 'more' && (
+                <View style={{ gap: 8 }}>
+                  <PanelItem label="Libellés" onPress={() => setShowPanel('labels')} icon={<Tag size={20} color="#FFF" />} />
+                  <PanelItem label="Partager la note" onPress={() => Share.share({ message: `${title}\n\n${content.replace(/<[^>]*>?/gm, '')}` })} icon={<Type size={20} color="#FFF" />} />
+                  <PanelItem label={isArchived ? "Désarchiver" : "Archiver"} onPress={() => { setIsArchived(!isArchived); setShowPanel('none'); }} icon={<Archive size={20} color="#FFF" />} />
+                  <PanelItem label="Supprimer" onPress={deleteNote} icon={<Trash2 size={20} color="#FF453A" />} />
+                </View>
               )}
             </View>
           </View>
@@ -415,10 +435,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, height: 60 },
   iconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  titleInput: { fontSize: 32, fontWeight: '800', color: '#FFF', letterSpacing: -1, marginBottom: 12, marginTop: 10 },
+  titleInput: { fontSize: 28, fontWeight: '700', color: '#FFF', letterSpacing: -0.5, marginBottom: 8, marginTop: 10, paddingVertical: 10, textAlignVertical: 'top' },
   richEditor: { flex: 1, minHeight: 400 },
-  richBar: { backgroundColor: 'transparent', borderTopWidth: 0, borderBottomWidth: 0 },
+  richBar: { backgroundColor: 'transparent', borderTopWidth: 0, borderBottomWidth: 0, width: '100%' },
+  bottomBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 50, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.1)' },
+  barBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  lastEdit: { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
   labelScroll: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  formattingContainer: { paddingBottom: 10 },
   labelChip: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   labelChipText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
   panelOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
