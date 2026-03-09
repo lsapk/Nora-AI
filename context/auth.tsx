@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase, isRememberMeEnabled } from '../lib/supabase';
+import { supabase, isRememberMeEnabled, isSupabaseConfigured } from '../lib/supabase';
 
 type AuthContextType = {
   session: Session | null;
@@ -20,6 +20,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setIsLoading(false);
+      return;
+    }
+
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session && !isRememberMeEnabled()) {
