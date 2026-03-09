@@ -9,9 +9,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { Sparkles, Send, X } from 'lucide-react-native';
+import { Sparkles, Send, X, FileText, CheckCircle, Briefcase, List } from 'lucide-react-native';
+import Colors from '@/constants/Colors';
 
 interface AIChatOverlayProps {
   isVisible: boolean;
@@ -21,27 +23,34 @@ interface AIChatOverlayProps {
   isTyping: boolean;
 }
 
-const QUICK_PROMPTS = ['Résume cette note', 'Corrige les fautes', 'Version professionnelle', 'To-do list claire'];
+const QUICK_PROMPTS = [
+  { label: 'Résumer', icon: FileText, text: 'Résume cette note' },
+  { label: 'Corriger', icon: CheckCircle, text: 'Corrige les fautes' },
+  { label: 'Pro', icon: Briefcase, text: 'Version professionnelle' },
+  { label: 'Liste', icon: List, text: 'To-do list claire' },
+];
 
 export default function AIChatOverlay({ isVisible, onClose, onSendMessage, messages, isTyping }: AIChatOverlayProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView | null>(null);
   const translateY = useSharedValue(900);
   const backdropOpacity = useSharedValue(0);
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   useEffect(() => {
     if (isVisible) {
-      translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
-      backdropOpacity.value = withTiming(1, { duration: 180 });
+      translateY.value = withTiming(0, { duration: 250, easing: Easing.out(Easing.back(0.5)) });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
       return;
     }
-    translateY.value = withTiming(900, { duration: 160, easing: Easing.in(Easing.cubic) });
-    backdropOpacity.value = withTiming(0, { duration: 100 });
+    translateY.value = withTiming(900, { duration: 200, easing: Easing.in(Easing.cubic) });
+    backdropOpacity.value = withTiming(0, { duration: 150 });
   }, [isVisible]);
 
   useEffect(() => {
     if (!isVisible) return;
-    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     return () => clearTimeout(t);
   }, [messages, isTyping, isVisible]);
 
@@ -55,65 +64,90 @@ export default function AIChatOverlay({ isVisible, onClose, onSendMessage, messa
     setInput('');
   };
 
-  if (!isVisible) return null;
+  if (!isVisible && translateY.value === 900) return null;
 
   return (
-    <View style={styles.root}>
+    <View style={styles.root} pointerEvents={isVisible ? 'auto' : 'none'}>
       <Animated.View style={[styles.backdrop, animatedBackdropStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
       <Animated.View style={[styles.sheetWrap, animatedStyle]}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <View style={[styles.sheet, { backgroundColor: theme.drawer }]}>
+          <View style={[styles.handle, { backgroundColor: theme.border }]} />
 
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View style={styles.sparkleBg}>
-                <Sparkles size={16} color="#2563EB" />
+              <View style={[styles.sparkleBg, { backgroundColor: theme.tint + '15' }]}>
+                <Sparkles size={18} color={theme.tint} />
               </View>
               <View>
-                <Text style={styles.title}>Nora AI</Text>
-                <Text style={styles.subtitle}>Assistant de rédaction</Text>
+                <Text style={[styles.title, { color: theme.text }]}>Nora AI</Text>
+                <Text style={[styles.subtitle, { color: theme.subtext }]}>Assistant de rédaction</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={18} color="#A1A1AA" />
+            <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: theme.border + '50' }]}>
+              <X size={18} color={theme.icon} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
+          <View style={styles.quickRow}>
             {QUICK_PROMPTS.map((prompt) => (
-              <TouchableOpacity key={prompt} onPress={() => handleSend(prompt)} style={styles.quickChip}>
-                <Text style={styles.quickChipText}>{prompt}</Text>
+              <TouchableOpacity
+                key={prompt.label}
+                onPress={() => handleSend(prompt.text)}
+                style={[styles.quickChip, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+              >
+                <prompt.icon size={14} color={theme.tint} />
+                <Text style={[styles.quickChipText, { color: theme.text }]}>{prompt.label}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
 
-          <ScrollView ref={scrollRef} contentContainerStyle={styles.messagesContainer}>
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={styles.messagesContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            {messages.length === 0 && !isTyping && (
+              <View style={styles.emptyState}>
+                <Text style={[styles.emptyText, { color: theme.subtext }]}>Comment puis-je vous aider aujourd'hui ?</Text>
+              </View>
+            )}
             {messages.map((msg, index) => (
-              <View key={`${msg.role}-${index}`} style={[styles.messageBubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}>
-                <Text style={[styles.messageText, msg.role === 'user' ? styles.userText : styles.aiText]}>{msg.content}</Text>
+              <View key={`${msg.role}-${index}`} style={[
+                styles.messageBubble,
+                msg.role === 'user' ? [styles.userBubble, { backgroundColor: theme.tint }] : [styles.aiBubble, { backgroundColor: theme.inputBackground }]
+              ]}>
+                <Text style={[
+                  styles.messageText,
+                  msg.role === 'user' ? styles.userText : { color: theme.text }
+                ]}>{msg.content}</Text>
               </View>
             ))}
             {isTyping && (
-              <View style={[styles.messageBubble, styles.aiBubble]}>
-                <Text style={styles.aiText}>Nora AI réfléchit…</Text>
+              <View style={[styles.messageBubble, styles.aiBubble, { backgroundColor: theme.inputBackground }]}>
+                <Text style={[styles.aiText, { color: theme.text, opacity: 0.6 }]}>Nora AI réfléchit…</Text>
               </View>
             )}
           </ScrollView>
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-            <View style={styles.inputArea}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
+            <View style={[styles.inputArea, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
               <TextInput
-                style={styles.input}
-                placeholder="Demande à Nora AI d'améliorer ta note..."
-                placeholderTextColor="#71717A"
+                style={[styles.input, { color: theme.text }]}
+                placeholder="Demande à Nora..."
+                placeholderTextColor={theme.subtext}
                 value={input}
                 onChangeText={setInput}
                 multiline
+                maxHeight={100}
               />
-              <TouchableOpacity onPress={() => handleSend()} style={styles.sendButton}>
+              <TouchableOpacity
+                onPress={() => handleSend()}
+                style={[styles.sendButton, { backgroundColor: theme.tint }]}
+                disabled={!input.trim()}
+              >
                 <Send size={16} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
@@ -126,34 +160,55 @@ export default function AIChatOverlay({ isVisible, onClose, onSendMessage, messa
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 1000, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-  sheetWrap: { height: '76%' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheetWrap: { height: '70%' },
   sheet: {
     flex: 1,
-    backgroundColor: '#0B1220',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 20,
   },
-  handle: { width: 40, height: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.3)', alignSelf: 'center', marginTop: 8, marginBottom: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sparkleBg: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E5EEFF' },
-  title: { color: '#FAFAFA', fontWeight: '700', fontSize: 16 },
-  subtitle: { color: '#A1A1AA', fontSize: 12, marginTop: 1 },
-  closeButton: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151F33' },
-  quickRow: { gap: 8, paddingTop: 12, paddingBottom: 10 },
-  quickChip: { borderRadius: 999, backgroundColor: '#16223A', paddingHorizontal: 12, paddingVertical: 8 },
-  quickChipText: { color: '#E4E4E7', fontSize: 12.5 },
-  messagesContainer: { paddingBottom: 12 },
-  messageBubble: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, marginBottom: 8, maxWidth: '88%' },
-  userBubble: { backgroundColor: '#2563EB', alignSelf: 'flex-end' },
-  aiBubble: { backgroundColor: '#1A2439', alignSelf: 'flex-start' },
-  messageText: { fontSize: 14, lineHeight: 19 },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 12 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sparkleBg: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  title: { fontWeight: '700', fontSize: 18 },
+  subtitle: { fontSize: 12, marginTop: 1 },
+  closeButton: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 20, flexWrap: 'wrap' },
+  quickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  quickChipText: { fontSize: 13, fontWeight: '500' },
+  messagesContainer: { paddingBottom: 20, flexGrow: 1 },
+  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 },
+  emptyText: { fontSize: 15, fontWeight: '400', textAlign: 'center' },
+  messageBubble: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, marginBottom: 10, maxWidth: '85%' },
+  userBubble: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  aiBubble: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  messageText: { fontSize: 15, lineHeight: 21 },
   userText: { color: '#FFFFFF' },
-  aiText: { color: '#F4F4F5' },
-  inputArea: { flexDirection: 'row', alignItems: 'flex-end', borderRadius: 16, backgroundColor: '#151F33', paddingHorizontal: 10, paddingVertical: 8, marginBottom: Platform.OS === 'ios' ? 12 : 6 },
-  input: { flex: 1, color: '#FAFAFA', fontSize: 15, maxHeight: 110, paddingTop: 3 },
-  sendButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  aiText: { fontStyle: 'italic' },
+  inputArea: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  input: { flex: 1, fontSize: 16, paddingTop: 4, paddingBottom: 4 },
+  sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
 });

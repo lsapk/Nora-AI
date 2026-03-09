@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +25,6 @@ import {
   Trash2,
   Pin,
   Sparkles,
-  Folder,
   Archive,
   Bold,
   Italic,
@@ -43,6 +43,7 @@ import { useAuth } from '../../context/auth';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import AIChatOverlay from '../../components/AIChatOverlay';
 import { getAIResponse } from '../../lib/ai';
+import Colors, { NOTE_COLORS } from '../../constants/Colors';
 
 type Note = {
   id: string;
@@ -55,26 +56,14 @@ type Note = {
   archived?: boolean | null;
 };
 
-const NOTE_COLORS = [
-  '#000000', // Default Black
-  '#77172e', // Dark Red
-  '#692b17', // Dark Orange
-  '#7c5e10', // Dark Yellow
-  '#265d48', // Dark Green
-  '#256377', // Dark Cyan
-  '#1e3a8a', // Dark Blue
-  '#472e5b', // Dark Purple
-  '#6c394f', // Dark Pink
-  '#443126', // Dark Brown
-  '#3c3f43', // Dark Gray
-];
-
 export default function EditorScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const noteId = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
   const richText = useRef<RichEditor>(null);
 
   const [note, setNote] = useState<Note | null>(null);
@@ -82,7 +71,7 @@ export default function EditorScreen() {
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [noteColor, setNoteColor] = useState('#000000');
+  const [noteColor, setNoteColor] = useState(colorScheme === 'dark' ? '#000000' : '#ffffff');
   const [labels, setLabels] = useState<string[]>([]);
   const [allUserLabels, setAllUserLabels] = useState<string[]>([]);
   const [isPinned, setIsPinned] = useState(false);
@@ -109,17 +98,16 @@ export default function EditorScreen() {
     setTitle(n.title || '');
     const noteContent = n.content || '';
     setContent(noteContent);
-    // CRITICAL FIX: Set editor content after fetch
     if (noteContent !== content) {
       richText.current?.setContentHTML(noteContent);
     }
 
-    setNoteColor(n.note_color || '#000000');
+    setNoteColor(n.note_color || (colorScheme === 'dark' ? '#000000' : '#ffffff'));
     setLabels(n.labels || []);
     setIsPinned(Boolean(n.pinned));
     setIsArchived(Boolean(n.archived));
     setLoading(false);
-  }, [noteId, user?.id]);
+  }, [noteId, user?.id, colorScheme]);
 
   const fetchAllLabels = useCallback(async () => {
     if (!user?.id) return;
@@ -156,7 +144,7 @@ export default function EditorScreen() {
       setIsSaving(false);
       if (error) console.error('Erreur sauvegarde:', error.message);
     },
-    [noteId, user?.id, noteColor, labels, isPinned, folderId, isArchived]
+    [noteId, user?.id, noteColor, labels, isPinned, isArchived]
   );
 
   useEffect(() => {
@@ -207,27 +195,32 @@ export default function EditorScreen() {
     ]);
   };
 
-  if (loading) return <View style={styles.center}><Text style={{color: '#fff'}}>Chargement...</Text></View>;
+  // Determine if high contrast text is needed (Keep handles this well)
+  const isDarkNote = noteColor !== '#ffffff' && noteColor !== '#FFFFFF' && noteColor !== '#e8eaed';
+  const editorTextColor = colorScheme === 'dark' ? '#FFFFFF' : (isDarkNote ? '#202124' : '#202124');
+  const placeholderColor = isDarkNote ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.4)';
+
+  if (loading) return <View style={[styles.center, { backgroundColor: theme.background }]}><Text style={{color: theme.text}}>Chargement...</Text></View>;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: noteColor }]} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
-            <ArrowLeft size={24} color="#FFF" />
+            <ArrowLeft size={24} color={editorTextColor} />
           </TouchableOpacity>
 
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <TouchableOpacity onPress={() => setIsAIChatVisible(true)}>
-              <Sparkles size={22} color="#FFF" />
+              <Sparkles size={22} color={editorTextColor} />
             </TouchableOpacity>
             {!isArchived && (
               <TouchableOpacity onPress={() => setIsPinned(!isPinned)}>
-                <Pin size={22} color={isPinned ? '#007AFF' : '#FFF'} fill={isPinned ? '#007AFF' : 'transparent'} />
+                <Pin size={22} color={isPinned ? theme.tint : editorTextColor} fill={isPinned ? theme.tint : 'transparent'} />
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => setShowPanel('more')}>
-              <MoreVertical size={22} color="#FFF" />
+              <MoreVertical size={22} color={editorTextColor} />
             </TouchableOpacity>
           </View>
         </View>
@@ -237,16 +230,16 @@ export default function EditorScreen() {
             value={title}
             onChangeText={setTitle}
             placeholder="Titre"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            style={styles.titleInput}
+            placeholderTextColor={placeholderColor}
+            style={[styles.titleInput, { color: editorTextColor }]}
             multiline
           />
 
           {labels.length > 0 && (
             <View style={styles.labelScroll}>
               {labels.map(l => (
-                <TouchableOpacity key={l} style={styles.labelChip} onPress={() => toggleLabel(l)}>
-                  <Text style={styles.labelChipText}>#{l} ✕</Text>
+                <TouchableOpacity key={l} style={[styles.labelChip, { backgroundColor: 'rgba(0,0,0,0.05)' }]} onPress={() => toggleLabel(l)}>
+                  <Text style={[styles.labelChipText, { color: editorTextColor }]}>{l} ✕</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -261,8 +254,8 @@ export default function EditorScreen() {
             placeholder="Écrivez quelque chose..."
             editorStyle={{
               backgroundColor: noteColor,
-              color: '#FFF',
-              placeholderColor: 'rgba(255,255,255,0.2)',
+              color: editorTextColor,
+              placeholderColor: placeholderColor,
               contentCSSText: 'font-size: 16px; line-height: 24px;',
             }}
             style={styles.richEditor}
@@ -274,46 +267,54 @@ export default function EditorScreen() {
           />
         </ScrollView>
 
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]}>
+        <View style={[styles.bottomBar, {
+          paddingBottom: Math.max(insets.bottom, 16),
+          height: 56 + Math.max(insets.bottom, 16),
+          borderTopColor: 'rgba(0,0,0,0.1)'
+        }]}>
           <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('formatting')}>
-            <Plus size={22} color="#FFF" />
+            <Plus size={22} color={editorTextColor} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('color')}>
-            <Palette size={22} color="#FFF" />
+            <Palette size={22} color={editorTextColor} />
           </TouchableOpacity>
           {!isArchived && (
             <TouchableOpacity style={styles.barBtn} onPress={archiveNote}>
-              <Archive size={22} color="#FFF" />
+              <Archive size={22} color={editorTextColor} />
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }} />
-          <Text style={styles.lastEdit}>
+          <Text style={[styles.lastEdit, { color: editorTextColor, opacity: 0.6 }]}>
             Modifié {new Date(note?.updated_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
           <View style={{ flex: 1 }} />
           <TouchableOpacity style={styles.barBtn} onPress={() => setShowPanel('more')}>
-            <MoreVertical size={22} color="#FFF" />
+            <MoreVertical size={22} color={editorTextColor} />
           </TouchableOpacity>
         </View>
 
         {showPanel !== 'none' && (
           <View style={styles.panelOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowPanel('none')} />
-            <View style={[styles.panel, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={[styles.panel, { paddingBottom: insets.bottom + 24, backgroundColor: theme.drawer }]}>
               <View style={styles.panelHeader}>
-                <Text style={styles.panelTitle}>
+                <Text style={[styles.panelTitle, { color: theme.text }]}>
                   {showPanel === 'color' ? 'Couleur' : showPanel === 'labels' ? 'Libellés' : showPanel === 'formatting' ? 'Formatage' : 'Options'}
                 </Text>
                 <TouchableOpacity onPress={() => setShowPanel('none')}>
-                  <ChevronDown size={24} color="#FFF" />
+                  <ChevronDown size={24} color={theme.text} />
                 </TouchableOpacity>
               </View>
 
               {showPanel === 'color' && (
                 <View style={styles.colorGrid}>
-                  {NOTE_COLORS.map(c => (
-                    <TouchableOpacity key={c} style={[styles.colorDot, { backgroundColor: c }]} onPress={() => { setNoteColor(c); setShowPanel('none'); }}>
-                      {noteColor === c && <Check size={20} color="#FFF" />}
+                  {NOTE_COLORS[colorScheme].map(c => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.colorDot, { backgroundColor: c, borderColor: theme.border }]}
+                      onPress={() => { setNoteColor(c); setShowPanel('none'); }}
+                    >
+                      {noteColor === c && <Check size={20} color={c === '#ffffff' ? '#000' : '#FFF'} />}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -326,11 +327,11 @@ export default function EditorScreen() {
                       value={newLabelName}
                       onChangeText={setNewLabelName}
                       placeholder="Nouveau libellé..."
-                      placeholderTextColor="rgba(255,255,255,0.4)"
-                      style={styles.panelInput}
+                      placeholderTextColor={theme.subtext}
+                      style={[styles.panelInput, { color: theme.text, backgroundColor: theme.inputBackground }]}
                       onSubmitEditing={handleAddNewLabel}
                     />
-                    <TouchableOpacity style={styles.addBtn} onPress={handleAddNewLabel}>
+                    <TouchableOpacity style={[styles.addBtn, { backgroundColor: theme.tint }]} onPress={handleAddNewLabel}>
                       <Plus size={20} color="#FFF" />
                     </TouchableOpacity>
                   </View>
@@ -339,11 +340,11 @@ export default function EditorScreen() {
                     {allUserLabels.map(l => (
                       <TouchableOpacity
                         key={l}
-                        style={[styles.labelChoice, labels.includes(l) && styles.labelChoiceActive]}
+                        style={[styles.labelChoice, labels.includes(l) && { backgroundColor: theme.tint + '20', borderColor: theme.tint }]}
                         onPress={() => toggleLabel(l)}
                       >
-                        <Text style={[styles.labelChoiceText, labels.includes(l) && styles.labelChoiceTextActive]}>#{l}</Text>
-                        {labels.includes(l) && <Check size={14} color="#FFF" />}
+                        <Text style={[styles.labelChoiceText, { color: theme.text }, labels.includes(l) && { color: theme.tint, fontWeight: '700' }]}>{l}</Text>
+                        {labels.includes(l) && <Check size={14} color={theme.tint} />}
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -375,19 +376,19 @@ export default function EditorScreen() {
                     }}
                     selectedButtonStyle={{ backgroundColor: 'transparent' }}
                     unselectedButtonStyle={{ backgroundColor: 'transparent' }}
-                    selectedIconTint="#007AFF"
-                    iconTint="#FFF"
-                    style={styles.richBar}
+                    selectedIconTint={theme.tint}
+                    iconTint={theme.text}
+                    style={[styles.richBar, { backgroundColor: 'transparent' }]}
                   />
                 </View>
               )}
 
               {showPanel === 'more' && (
-                <View style={{ gap: 8 }}>
-                  <PanelItem label="Libellés" onPress={() => setShowPanel('labels')} icon={<Tag size={20} color="#FFF" />} />
-                  <PanelItem label="Partager la note" onPress={() => Share.share({ message: `${title}\n\n${content.replace(/<[^>]*>?/gm, '')}` })} icon={<Type size={20} color="#FFF" />} />
-                  <PanelItem label={isArchived ? "Désarchiver" : "Archiver"} onPress={() => { setIsArchived(!isArchived); setShowPanel('none'); }} icon={<Archive size={20} color="#FFF" />} />
-                  <PanelItem label="Supprimer" onPress={deleteNote} icon={<Trash2 size={20} color="#FF453A" />} />
+                <View style={{ gap: 4 }}>
+                  <PanelItem label="Libellés" theme={theme} onPress={() => setShowPanel('labels')} icon={<Tag size={20} color={theme.icon} />} />
+                  <PanelItem label="Partager la note" theme={theme} onPress={() => Share.share({ message: `${title}\n\n${content.replace(/<[^>]*>?/gm, '')}` })} icon={<Type size={20} color={theme.icon} />} />
+                  <PanelItem label={isArchived ? "Désarchiver" : "Archiver"} theme={theme} onPress={() => { setIsArchived(!isArchived); setShowPanel('none'); }} icon={<Archive size={20} color={theme.icon} />} />
+                  <PanelItem label="Supprimer" theme={theme} onPress={deleteNote} icon={<Trash2 size={20} color="#FF453A" />} />
                 </View>
               )}
             </View>
@@ -421,54 +422,52 @@ export default function EditorScreen() {
   );
 }
 
-function PanelItem({ label, onPress, icon }: { label: string, onPress: () => void, icon?: any }) {
+function PanelItem({ label, onPress, icon, theme }: { label: string, onPress: () => void, icon?: any, theme: any }) {
   return (
     <TouchableOpacity style={styles.panelItem} onPress={onPress}>
-      <View style={{ width: 32 }}>{icon}</View>
-      <Text style={styles.panelItemText}>{label}</Text>
+      <View style={{ width: 36 }}>{icon}</View>
+      <Text style={[styles.panelItemText, { color: theme.text }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, height: 60 },
   iconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  titleInput: { fontSize: 28, fontWeight: '700', color: '#FFF', letterSpacing: -0.5, marginBottom: 8, marginTop: 10, paddingVertical: 10, textAlignVertical: 'top' },
+  titleInput: { fontSize: 24, fontWeight: '500', letterSpacing: -0.2, marginBottom: 8, marginTop: 10, paddingVertical: 10, textAlignVertical: 'top' },
   richEditor: { flex: 1, minHeight: 400 },
-  richBar: { backgroundColor: 'transparent', borderTopWidth: 0, borderBottomWidth: 0, width: '100%' },
-  bottomBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 50, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.1)' },
+  richBar: { borderTopWidth: 0, borderBottomWidth: 0, width: '100%' },
+  bottomBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderTopWidth: 0.5 },
   barBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  lastEdit: { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+  lastEdit: { fontSize: 12 },
   labelScroll: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   formattingContainer: { paddingBottom: 10 },
-  labelChip: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  labelChipText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
+  labelChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  labelChipText: { fontSize: 12, fontWeight: '500' },
   panelOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  panel: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24 },
-  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  panelTitle: { color: '#FFF', fontSize: 20, fontWeight: '700' },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'center' },
-  colorDot: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  panelTitle: { fontSize: 18, fontWeight: '600' },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
+  colorDot: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   inputRow: { flexDirection: 'row', gap: 12 },
-  panelInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14, color: '#FFF', fontSize: 16 },
-  addBtn: { backgroundColor: '#007AFF', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
-  labelList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  panelInput: { flex: 1, borderRadius: 12, padding: 12, fontSize: 16 },
+  addBtn: { borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
+  labelList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   labelChoice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.05)',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'transparent',
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  labelChoiceActive: { backgroundColor: 'rgba(0,122,255,0.2)', borderColor: '#007AFF' },
-  labelChoiceText: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '500' },
-  labelChoiceTextActive: { color: '#FFF', fontWeight: '700' },
-  panelItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
-  panelItemText: { color: '#FFF', fontSize: 17, fontWeight: '500' },
+  labelChoiceText: { fontSize: 14, fontWeight: '500' },
+  panelItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  panelItemText: { fontSize: 16, fontWeight: '400' },
 });
