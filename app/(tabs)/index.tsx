@@ -10,17 +10,18 @@ import {
   View,
   UIManager,
   Dimensions,
+  useColorScheme,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Menu, Search, Plus, Archive, Settings, StickyNote, LogOut, Tag, Trash2, ArrowLeft, Check } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/auth';
 import NoteCard from '../../components/NoteCard';
+import Colors from '../../constants/Colors';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +41,8 @@ export default function NotesScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -93,7 +96,6 @@ export default function NotesScreen() {
     [notes, selectedLabel, search]
   );
 
-  // Simple Masonry implementation using two columns
   const masonryData = useMemo(() => {
     const leftCol: NoteRow[] = [];
     const rightCol: NoteRow[] = [];
@@ -110,7 +112,7 @@ export default function NotesScreen() {
       .insert({
         user_id: user?.id,
         content: '',
-        note_color: '#000000',
+        note_color: colorScheme === 'dark' ? '#000000' : '#ffffff',
         labels: selectedLabel ? [selectedLabel] : [],
         order_index: notes.length > 0 ? Math.min(...notes.map((n: any) => n.order_index ?? 0)) - 1 : 0
       } as any)
@@ -127,7 +129,7 @@ export default function NotesScreen() {
         title: '',
         labels: [newLabelName.trim()],
         archived: true,
-        note_color: '#000000'
+        note_color: colorScheme === 'dark' ? '#000000' : '#ffffff'
     });
     if (error) Alert.alert('Erreur', error.message);
     setNewLabelName('');
@@ -156,24 +158,30 @@ export default function NotesScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.topRow}>
-          <TouchableOpacity style={styles.menuBtn} onPress={() => setDrawerOpen(true)}>
-            <Menu size={21} color="#E5E7EB" />
+          <TouchableOpacity style={[styles.menuBtn, { backgroundColor: theme.card }]} onPress={() => setDrawerOpen(true)}>
+            <Menu size={22} color={theme.icon} />
           </TouchableOpacity>
-          <BlurView intensity={30} tint="dark" style={styles.searchWrap}>
-            <Search size={18} color="#9CA3AF" />
-            <TextInput style={styles.searchInput} placeholder="Rechercher" placeholderTextColor="rgba(255,255,255,0.4)" value={search} onChangeText={setSearch} />
-          </BlurView>
+          <View style={[styles.searchWrap, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 }]}>
+            <Search size={18} color={theme.subtext} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Rechercher"
+              placeholderTextColor={theme.subtext}
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
         </View>
 
-        <Text style={styles.sectionTitle}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>
           {showArchived ? 'Archives' : (selectedLabel || 'Mes Notes')}
         </Text>
 
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 8, paddingBottom: insets.bottom + 112 }}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#D1D5DB" />}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.tint} />}
         >
           <View style={styles.masonryContainer}>
             <View style={styles.column}>
@@ -207,28 +215,75 @@ export default function NotesScreen() {
               ))}
             </View>
           </View>
-          {filteredNotes.length === 0 && !isLoading && <Text style={styles.emptyText}>Aucune note</Text>}
+          {filteredNotes.length === 0 && !isLoading && <Text style={[styles.emptyText, { color: theme.subtext }]}>Aucune note</Text>}
         </ScrollView>
 
         {!showArchived && (
-          <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={createNote}>
-            <Plus size={34} color="#000" />
+          <TouchableOpacity
+            style={[styles.fab, { bottom: insets.bottom + 24, backgroundColor: theme.fab, shadowColor: theme.text }]}
+            onPress={createNote}
+          >
+            <Plus size={32} color={theme.fabIcon} />
           </TouchableOpacity>
         )}
 
         <Modal visible={drawerOpen} transparent animationType="fade">
           <View style={styles.drawerOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
-            <View style={[styles.drawer, { paddingTop: insets.top + 20 }]}>
-              <View style={styles.drawerHeader}><Text style={styles.drawerTitle}>Nora AI</Text><Text style={styles.drawerSubtitle}>{user?.email}</Text></View>
-              <DrawerItem icon={<StickyNote size={20} color="#E5E7EB" />} label="Toutes les notes" active={!selectedLabel && !showArchived} onPress={() => { setSelectedLabel(null); setShowArchived(false); setDrawerOpen(false); }} />
-              <View style={styles.drawerDivider} />
-              <View style={styles.drawerSectionHeader}><Text style={styles.drawerSectionLabel}>Libellés</Text><TouchableOpacity onPress={() => { setDrawerOpen(false); setLabelModalOpen(true); }}><Settings size={16} color="#007AFF" /></TouchableOpacity></View>
-              {allLabels.map(label => <DrawerItem key={label} icon={<Tag size={18} color="#E5E7EB" />} label={label} active={selectedLabel?.toLowerCase() === label.toLowerCase()} onPress={() => { setSelectedLabel(label); setShowArchived(false); setDrawerOpen(false); }} />)}
-              <View style={styles.drawerDivider} />
-              <DrawerItem icon={<Archive size={20} color="#E5E7EB" />} label="Archives" active={showArchived} onPress={() => { setShowArchived(true); setSelectedLabel(null); setDrawerOpen(false); }} />
-              <DrawerItem icon={<Settings size={20} color="#E5E7EB" />} label="Paramètres" onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }} />
-              <DrawerItem icon={<LogOut size={20} color="#FF453A" />} label="Se déconnecter" onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }} />
+            <View style={[styles.drawer, { paddingTop: insets.top + 20, backgroundColor: theme.drawer }]}>
+              <View style={styles.drawerHeader}>
+                <Text style={[styles.drawerTitle, { color: theme.text }]}>Nora AI</Text>
+                <Text style={[styles.drawerSubtitle, { color: theme.subtext }]}>{user?.email}</Text>
+              </View>
+
+              <DrawerItem
+                icon={<StickyNote size={20} color={theme.icon} />}
+                label="Toutes les notes"
+                active={!selectedLabel && !showArchived}
+                theme={theme}
+                onPress={() => { setSelectedLabel(null); setShowArchived(false); setDrawerOpen(false); }}
+              />
+              <View style={[styles.drawerDivider, { backgroundColor: theme.border }]} />
+
+              <View style={styles.drawerSectionHeader}>
+                <Text style={[styles.drawerSectionLabel, { color: theme.subtext }]}>Libellés</Text>
+                <TouchableOpacity onPress={() => { setDrawerOpen(false); setLabelModalOpen(true); }}>
+                  <Settings size={16} color={theme.tint} />
+                </TouchableOpacity>
+              </View>
+
+              {allLabels.map(label => (
+                <DrawerItem
+                  key={label}
+                  icon={<Tag size={18} color={theme.icon} />}
+                  label={label}
+                  active={selectedLabel?.toLowerCase() === label.toLowerCase()}
+                  theme={theme}
+                  onPress={() => { setSelectedLabel(label); setShowArchived(false); setDrawerOpen(false); }}
+                />
+              ))}
+
+              <View style={[styles.drawerDivider, { backgroundColor: theme.border }]} />
+
+              <DrawerItem
+                icon={<Archive size={20} color={theme.icon} />}
+                label="Archives"
+                active={showArchived}
+                theme={theme}
+                onPress={() => { setShowArchived(true); setSelectedLabel(null); setDrawerOpen(false); }}
+              />
+              <DrawerItem
+                icon={<Settings size={20} color={theme.icon} />}
+                label="Paramètres"
+                theme={theme}
+                onPress={() => { setDrawerOpen(false); router.push('/(tabs)/two'); }}
+              />
+              <DrawerItem
+                icon={<LogOut size={20} color="#FF453A" />}
+                label="Se déconnecter"
+                theme={theme}
+                onPress={async () => { setDrawerOpen(false); await supabase.auth.signOut(); }}
+              />
             </View>
           </View>
         </Modal>
@@ -236,40 +291,40 @@ export default function NotesScreen() {
         <Modal visible={labelModalOpen} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setLabelModalOpen(false)} />
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { backgroundColor: theme.drawer }]}>
               <View style={styles.modalHeader}>
                 <TouchableOpacity onPress={() => setLabelModalOpen(false)}>
-                  <ArrowLeft size={24} color="#FFF" />
+                  <ArrowLeft size={24} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.modalTitle}>Modifier les libellés</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Modifier les libellés</Text>
               </View>
 
-              <View style={styles.modalInputRow}>
-                <Plus size={20} color="#9CA3AF" />
+              <View style={[styles.modalInputRow, { borderBottomColor: theme.border }]}>
+                <Plus size={20} color={theme.subtext} />
                 <TextInput
                   placeholder="Créer un libellé"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  style={styles.modalInput}
+                  placeholderTextColor={theme.subtext}
+                  style={[styles.modalInput, { color: theme.text }]}
                   value={newLabelName}
                   onChangeText={setNewLabelName}
                   onSubmitEditing={handleCreateLabel}
                 />
                 <TouchableOpacity onPress={handleCreateLabel}>
-                  <Check size={20} color="#007AFF" />
+                  <Check size={20} color={theme.tint} />
                 </TouchableOpacity>
               </View>
 
               <ScrollView>
                 {allLabels.map(l => (
                   <View key={l} style={styles.modalRow}>
-                    <Tag size={18} color="#9CA3AF" />
+                    <Tag size={18} color={theme.subtext} />
                     <TextInput
-                      style={styles.labelEditInput}
+                      style={[styles.labelEditInput, { color: theme.text }]}
                       value={l}
                       editable={false}
                     />
                     <TouchableOpacity onPress={() => handleDeleteLabel(l)}>
-                      <Trash2 size={18} color="#9CA3AF" />
+                      <Trash2 size={18} color={theme.subtext} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -282,45 +337,42 @@ export default function NotesScreen() {
   );
 }
 
-function DrawerItem({ icon, label, active = false, onPress }: { icon: React.ReactNode; label: string; active?: boolean; onPress?: () => void }) {
+function DrawerItem({ icon, label, active = false, onPress, theme }: { icon: React.ReactNode; label: string; active?: boolean; onPress?: () => void, theme: any }) {
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.drawerItem, active && styles.drawerItemActive]}>
+    <TouchableOpacity onPress={onPress} style={[styles.drawerItem, active && { backgroundColor: theme.tint + '15' }]}>
       <View style={{ width: 28 }}>{icon}</View>
-      <Text style={[styles.drawerText, active && styles.drawerTextActive]}>{label}</Text>
+      <Text style={[styles.drawerText, { color: theme.text }, active && { color: theme.tint, fontWeight: '700' }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10 },
-  menuBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C1C1E' },
-  searchWrap: { flex: 1, height: 44, borderRadius: 22, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10, backgroundColor: '#1C1C1E' },
-  searchInput: { flex: 1, color: '#FFF', fontSize: 16 },
-  sectionTitle: { color: '#FFF', fontSize: 24, fontWeight: '600', marginTop: 24, marginHorizontal: 20, marginBottom: 16 },
-  masonryContainer: { flexDirection: 'row', gap: 8 },
-  column: { flex: 1, gap: 8 },
-  emptyText: { color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 100, fontSize: 16 },
-  fab: { position: 'absolute', right: 20, width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#FFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  drawer: { backgroundColor: '#1C1C1E', width: '80%', height: '100%', borderTopRightRadius: 32, borderBottomRightRadius: 32, paddingHorizontal: 16 },
-  drawerHeader: { marginBottom: 32, paddingLeft: 8 },
-  drawerTitle: { color: '#FFF', fontSize: 28, fontWeight: '800' },
-  drawerSubtitle: { color: 'rgba(255,255,255,0.4)', fontSize: 14, marginTop: 4 },
-  drawerDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 16 },
-  drawerSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8, marginBottom: 12 },
-  drawerSectionLabel: { color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', paddingLeft: 8 },
-  drawerItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14, borderRadius: 16, marginBottom: 4 },
-  drawerItemActive: { backgroundColor: 'rgba(0,122,255,0.15)' },
-  drawerText: { color: '#E5E7EB', fontSize: 17, fontWeight: '500' },
-  drawerTextActive: { color: '#007AFF', fontWeight: '700' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1C1C1E', padding: 24, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: 400 },
+  menuBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  searchWrap: { flex: 1, height: 44, borderRadius: 22, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10 },
+  searchInput: { flex: 1, fontSize: 16 },
+  sectionTitle: { fontSize: 22, fontWeight: '500', marginTop: 20, marginHorizontal: 20, marginBottom: 12 },
+  masonryContainer: { flexDirection: 'row', gap: 6, paddingHorizontal: 4 },
+  column: { flex: 1, gap: 6 },
+  emptyText: { textAlign: 'center', marginTop: 100, fontSize: 16 },
+  fab: { position: 'absolute', right: 20, width: 64, height: 64, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  drawer: { width: '82%', height: '100%', borderTopRightRadius: 24, borderBottomRightRadius: 24, paddingHorizontal: 16 },
+  drawerHeader: { marginBottom: 24, paddingLeft: 8, marginTop: 12 },
+  drawerTitle: { fontSize: 24, fontWeight: '700' },
+  drawerSubtitle: { fontSize: 13, marginTop: 2 },
+  drawerDivider: { height: 1, marginVertical: 12 },
+  drawerSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8, marginBottom: 8 },
+  drawerSectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingLeft: 8 },
+  drawerItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 24, marginBottom: 2 },
+  drawerText: { fontSize: 15, fontWeight: '500', marginLeft: 12 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { padding: 24, borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: 450 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 24 },
-  modalTitle: { color: '#FFF', fontSize: 22, fontWeight: '600' },
-  modalInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingVertical: 8 },
-  modalInput: { flex: 1, color: '#FFF', fontSize: 16, paddingVertical: 8 },
-  modalAddBtn: { backgroundColor: '#007AFF', width: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  modalTitle: { fontSize: 20, fontWeight: '600' },
+  modalInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20, borderBottomWidth: 1, paddingVertical: 8 },
+  modalInput: { flex: 1, fontSize: 16, paddingVertical: 8 },
   modalRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 12 },
-  labelEditInput: { flex: 1, color: '#FFF', fontSize: 16 },
+  labelEditInput: { flex: 1, fontSize: 16 },
 });

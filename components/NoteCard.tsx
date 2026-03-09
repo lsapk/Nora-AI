@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Pin } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
+import Colors from '@/constants/Colors';
 
 interface NoteCardProps {
   id: string;
@@ -19,10 +19,16 @@ interface NoteCardProps {
 
 export default function NoteCard({ id, title, content, updated_at, color, pinned, labels, onPress, onLongPress, isDragging }: NoteCardProps) {
   const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
-  const isDefaultColor = !color || color === '#0F172A' || color === '#0B1020' || color === '#000000';
-  const cardBackground = isDefaultColor ? '#1C1C1E' : color;
-  const textColor = '#FFF';
+  // Logic to determine background color
+  const isDefaultColor = !color || color === '#000000' || color === '#ffffff' || color === '#0F172A' || color === '#0B1020';
+  const cardBackground = isDefaultColor ? theme.card : color;
+
+  // High contrast text colors based on background
+  const textColor = theme.text;
+  const subtextColor = theme.subtext;
 
   return (
     <TouchableOpacity
@@ -42,8 +48,8 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
         styles.card,
         {
           backgroundColor: cardBackground,
-          borderColor: isDragging ? '#007AFF' : 'rgba(255,255,255,0.1)',
-          borderWidth: 1,
+          borderColor: isDragging ? theme.tint : theme.border,
+          borderWidth: isDefaultColor ? 1 : 0.5,
         }
       ]}>
         <View style={styles.rowTop}>
@@ -51,102 +57,94 @@ export default function NoteCard({ id, title, content, updated_at, color, pinned
             <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
               {title}
             </Text>
-          ) : (
-            <Text style={[styles.emptyTitle, { color: 'rgba(255,255,255,0.4)' }]}>
-              Sans titre
-            </Text>
-          )}
-          {pinned && <Pin size={14} color="#007AFF" fill="#007AFF" />}
+          ) : null}
+          {pinned && <Pin size={14} color={theme.tint} fill={theme.tint} />}
         </View>
 
-        <Text style={[styles.content, { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={10}>
-          {content || 'Aucun contenu supplémentaire'}
-        </Text>
+        {content ? (
+          <Text style={[styles.content, { color: textColor, opacity: 0.88 }]} numberOfLines={12}>
+            {content}
+          </Text>
+        ) : !title ? (
+          <Text style={[styles.emptyTitle, { color: subtextColor }]}>
+            Note vide
+          </Text>
+        ) : null}
 
         <View style={styles.footer}>
           {!!labels?.length && (
             <View style={styles.labelContainer}>
-              {labels.slice(0, 2).map((label, idx) => (
-                <View key={idx} style={styles.labelBadge}>
-                  <Text style={styles.labelText}>#{label}</Text>
+              {labels.slice(0, 3).map((label, idx) => (
+                <View key={idx} style={[styles.labelBadge, { backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                  <Text style={[styles.labelText, { color: subtextColor }]}>{label}</Text>
                 </View>
               ))}
-              {labels.length > 2 && <Text style={styles.moreLabels}>+{labels.length - 2}</Text>}
+              {labels.length > 3 && <Text style={[styles.moreLabels, { color: subtextColor }]}>+{labels.length - 3}</Text>}
             </View>
           )}
-          <Text style={styles.date}>
-            {new Date(updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-          </Text>
         </View>
-      </BlurView>
+      </View>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   cardContainer: {
-    marginBottom: 12,
+    marginBottom: 8,
     borderRadius: 12,
-    overflow: 'hidden',
   },
   card: {
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 12,
-    minHeight: 60,
+    minHeight: 40,
   },
   rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8
+    marginBottom: 4
   },
   title: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     flex: 1,
     marginRight: 8,
   },
   emptyTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    flex: 1,
+    fontSize: 15,
+    fontWeight: '400',
     fontStyle: 'italic',
   },
   content: {
     fontSize: 14,
-    lineHeight: 18,
-    marginBottom: 8,
+    lineHeight: 19,
+    marginBottom: 4,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 'auto',
+    marginTop: 8,
   },
   labelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     flex: 1,
+    flexWrap: 'wrap',
   },
   labelBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.1)',
   },
   labelText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '500',
   },
   moreLabels: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 11,
-  },
-  date: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.3)',
-    fontWeight: '500',
+    fontSize: 10,
   },
 });
