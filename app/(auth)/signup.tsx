@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, TextInput, TouchableOpacity, Text, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { Link, useRouter } from 'expo-router';
 import { UserPlus } from 'lucide-react-native';
 
@@ -13,6 +13,12 @@ export default function Signup() {
 
   async function signUpWithEmail() {
     setLoading(true);
+    if (!isSupabaseConfigured) {
+      Alert.alert('Configuration manquante', 'Ajoutez EXPO_PUBLIC_SUPABASE_URL et EXPO_PUBLIC_SUPABASE_ANON_KEY dans le fichier .env puis redémarrez Expo avec: npx expo start -c');
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signUp({
       email: email,
       password: password,
